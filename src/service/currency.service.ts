@@ -31,8 +31,8 @@ export const CurrencyService = {
     },
 
     async delete(id: string) {
-        await fetch(`${API_URL}/${id}`, {
-            method: 'PUT'
+        await fetch(`${API_URL}/${id}/toggle`, {
+            method: 'PATCH'
         });
     }
 };
