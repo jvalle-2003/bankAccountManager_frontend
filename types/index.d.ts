@@ -158,7 +158,68 @@ export type {
     BalanceHistory  // 👈 AGREGAR ESTE
 };
 
+// ============= TIPOS AGREGADOS =============
+export interface Role {
+    role_id: number;
+    role_name: string;
+    description?: string | null;
+    active: boolean;
+}
+// ============================================
+export type {
+    // ... todos los que ya tenías ...
+    Permission,
+    Period,
+    Reconciliation,
+    RolePermission,
+    BalanceHistory,
+    Role  // 👈 AGREGAR ESTE
+};
 
+// ============= TIPOS AGREGADOS =============
+export interface User {
+    user_id: number;
+    first_name: string;
+    second_name: string;
+    third_name?: string | null;
+    first_surname: string;
+    second_surname: string;
+    email: string;
+    username: string;
+    password: string;
+    role_id: number;
+}
+// ============================================
+export type {
+    // ... todos los que ya tenías ...
+    Permission,
+    Period,
+    Reconciliation,
+    RolePermission,
+    BalanceHistory,
+    Role,
+    User  // 👈 AGREGAR ESTE
+};
 
+// ============= TIPOS AGREGADOS =============
+export interface Audit {
+    audit_id: number;
+    description: string;
+    last_login?: string | null;
+    last_activity?: string;
+    last_ip?: string | null;
+    user_id: number;
+}
+// ============================================
 
-
+export type {
+    // ... todos los que ya tenías ...
+    Permission,
+    Period,
+    Reconciliation,
+    RolePermission,
+    BalanceHistory,
+    Role,
+    User,
+    Audit  // 👈 AGREGAR ESTE
+};
