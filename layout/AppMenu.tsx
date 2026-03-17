@@ -91,6 +91,21 @@ const AppMenu = () => {
                     icon: 'pi pi-fw pi-money-bill',
                     to: '/pages/currencies'
                 },
+                { 
+                    label: 'Bancos', 
+                    icon: 'pi pi-fw pi-building', 
+                    to: '/pages/banks' 
+                },
+                { 
+                    label: 'Tipos de Cuentas', 
+                    icon: 'pi pi-fw pi-list', 
+                    to: '/pages/accountType' 
+                },
+                { 
+                    label: 'Cuentas Bancarias', 
+                    icon: 'pi pi-fw pi-wallet', 
+                    to: '/pages/crud' 
+                }
                 // {
                 //     label: 'Timeline',
                 //     icon: 'pi pi-fw pi-calendar',

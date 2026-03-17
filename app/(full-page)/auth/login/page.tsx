@@ -54,7 +54,7 @@ const LoginPage = () => {
                                     Olvide mi contraseña?
                                 </a>
                             </div>
-                            <Button label="Iniciar Sesión" className="w-full p-3 text-xl" onClick={() => router.push('/dashboard')}></Button>
+                            <Button label="Iniciar Sesión" className="w-full p-3 text-xl" onClick={() => router.push('pages/crud')}></Button>
                         </div>
                     </div>
                 </div>
