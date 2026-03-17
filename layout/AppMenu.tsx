@@ -91,21 +91,21 @@ const AppMenu = () => {
                     icon: 'pi pi-fw pi-money-bill',
                     to: '/pages/currencies'
                 },
-                // {
-                //     label: 'Timeline',
-                //     icon: 'pi pi-fw pi-calendar',
-                //     to: '/pages/timeline'
-                // },
-                // {
-                //     label: 'Not Found',
-                //     icon: 'pi pi-fw pi-exclamation-circle',
-                //     to: '/pages/notfound'
-                // },
-                // {
-                //     label: 'Empty',
-                //     icon: 'pi pi-fw pi-circle-off',
-                //     to: '/pages/empty'
-                // }
+                {
+                    label: 'Usuarios',
+                    icon: 'pi pi-fw pi-users',
+                    to: '/pages/users'
+                },
+                {
+                    label: 'Roles',
+                    icon: 'pi pi-fw pi-exclamation-circle',
+                    to: '/pages/role'
+                },
+                {
+                    label: 'Auditoria',
+                    icon: 'pi pi-fw pi-shield',
+                    to: '/pages/audit'
+                }
             ]
         },
         // {
