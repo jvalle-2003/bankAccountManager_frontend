@@ -9,12 +9,8 @@ import { Toast } from 'primereact/toast';
 import { Toolbar } from 'primereact/toolbar';
 import { Dropdown } from 'primereact/dropdown';
 import React, { useEffect, useRef, useState } from 'react';
-<<<<<<< HEAD
-import { ProductService } from '../../../../src/service/ProductService';
 import { Demo } from '@/types';
-=======
-import { BankAccountService } from '../../../../demo/service/BankAccountService';
->>>>>>> tabla-cuentas
+import { BankAccountService } from '@/src/service/BankAccountService';
 
 const BankAccountsPage = () => {
     let emptyAccount = {

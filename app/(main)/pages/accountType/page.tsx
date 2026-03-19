@@ -7,7 +7,7 @@ import { InputText } from 'primereact/inputtext';
 import { Toast } from 'primereact/toast';
 import { Toolbar } from 'primereact/toolbar';
 import React, { useEffect, useRef, useState } from 'react';
-import { BankAccountService } from '../../../../demo/service/BankAccountService';
+import { BankAccountService } from '@/src/service/BankAccountService';
 
 const AccountTypePage = () => {
     let emptyType = {

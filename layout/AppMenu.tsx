@@ -106,6 +106,21 @@ const AppMenu = () => {
                     icon: 'pi pi-fw pi-wallet', 
                     to: '/pages/crud' 
                 },
+                                { 
+                    label: 'Periodos', 
+                    icon: 'pi pi-fw pi-building', 
+                    to: '/pages/periods' 
+                },
+                { 
+                    label: 'Conciliaciones', 
+                    icon: 'pi pi-fw pi-list', 
+                    to: '/pages/reconciliations' 
+                },
+                { 
+                    label: 'Permisos', 
+                    icon: 'pi pi-fw pi-wallet', 
+                    to: '/pages/permissions' 
+                },
                 // {
                 //     label: 'Timeline',
                 //     icon: 'pi pi-fw pi-calendar',
