@@ -11,6 +11,7 @@ import { Dropdown } from 'primereact/dropdown';
 import React, { useEffect, useRef, useState } from 'react';
 import { Demo } from '@/types';
 import { BankAccountService } from '@/src/service/BankAccountService';
+import { CurrencyService } from '@/src/service/currency.service';
 
 const BankAccountsPage = () => {
     let emptyAccount = {
@@ -31,25 +32,24 @@ const BankAccountsPage = () => {
     const [accountDialog, setAccountDialog] = useState(false);
     const [deleteDialog, setDeleteDialog] = useState(false);
     const toast = useRef<Toast>(null);
-
-    const currencyOptions = [
-        { label: 'Quetzales (GTQ)', value: 'GTQ' },
-        { label: 'Dólares (USD)', value: 'USD' }
-    ];
+    const [currencies, setCurrencies] = useState<any[]>([]);
 
     useEffect(() => { loadData(); }, []);
 
     const loadData = async () => {
         try {
             // Cargamos cuentas y también los catálogos para los Dropdowns
-            const [accs, bnks, typs] = await Promise.all([
+            const [accs, bnks, typs, currs] = await Promise.all([
                 BankAccountService.getAccounts(),
                 BankAccountService.getBanks(),
-                BankAccountService.getAccountTypes()
+                BankAccountService.getAccountTypes(),
+                CurrencyService.getAll()
+
             ]);
             setAccounts(accs);
             setBanks(bnks);
             setTypes(typs);
+            setCurrencies(currs);
         } catch (e) {
             toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar datos' });
         }
@@ -92,6 +92,11 @@ const BankAccountsPage = () => {
         }
     };
 
+    const currencyBodyTemplate = (rowData: any) => {
+    const monedaEncontrada = currencies.find(c => c.id_currency === rowData.currency_id);
+    return monedaEncontrada ? monedaEncontrada.name : rowData.currency_id;
+};
+
     const actionBody = (rowData: any) => (
         <div className="flex gap-2">
             <Button icon="pi pi-pencil" rounded severity="success" onClick={() => { setAccount(rowData); setAccountDialog(true); }} />
@@ -107,14 +112,32 @@ const BankAccountsPage = () => {
             )} />
 
             <DataTable value={accounts} paginator rows={10} responsiveLayout="scroll" emptyMessage="No hay cuentas registradas.">
-                <Column field="account_alias" header="Nombre / Alias" sortable />
-                <Column field="account_number" header="No. Cuenta" sortable />
-                <Column field="Bank.bank_name" header="Banco" sortable />
-                <Column field="AccountType.type_name" header="Tipo" sortable />
-                <Column field="currency_id" header="Moneda" sortable />
-                <Column field="current_balance" header="Saldo Actual" body={(r) => `${r.currency_id === 'GTQ' ? 'Q' : '$'} ${Number(r.current_balance).toLocaleString('es-GT', { minimumFractionDigits: 2 })}`} sortable />
-                <Column body={actionBody} header="Acciones" />
-            </DataTable>
+    <Column field="account_alias" header="Nombre / Alias" sortable />
+    <Column field="account_number" header="No. Cuenta" sortable />
+    <Column field="Bank.bank_name" header="Banco" sortable />
+    <Column field="AccountType.type_name" header="Tipo" sortable />
+    <Column field="currency_id" header="Moneda" body={currencyBodyTemplate} sortable />
+    <Column 
+        field="current_balance" 
+        header="Saldo Actual" 
+        sortable 
+        body={(rowData) => { 
+            const monedaInfo = currencies.find(c => c.id_currency === rowData.currency_id);
+            const simbolo = monedaInfo ? monedaInfo.symbol : 'Q';
+            const locale = rowData.currency_id === 'USD' ? 'en-US' : 'es-GT'; 
+            return (
+                <span style={{ fontWeight: 'bold' }}>
+                    {simbolo} {Number(rowData.current_balance).toLocaleString(locale, { 
+                        minimumFractionDigits: 2, 
+                        maximumFractionDigits: 2 
+                    })}
+                </span>
+            );
+        }} 
+    />
+    
+    <Column body={actionBody} header="Acciones" />
+</DataTable>
 
             <Dialog visible={accountDialog} style={{ width: '450px' }} header="Gestión de Cuenta Bancaria" modal className="p-fluid" onHide={() => setAccountDialog(false)}
                 footer={<><Button label="Cancelar" icon="pi pi-times" text onClick={() => setAccountDialog(false)} /><Button label="Guardar" icon="pi pi-check" onClick={saveAccount} /></>}>
@@ -126,7 +149,7 @@ const BankAccountsPage = () => {
 
                 <div className="field">
                     <label>Moneda</label>
-                    <Dropdown value={account.currency_id} options={currencyOptions} onChange={(e) => setAccount({...account, currency_id: e.value})} placeholder="GTQ o USD" />
+                    <Dropdown value={account.currency_id} options={currencies} optionLabel={"name"} optionValue="id_currency" onChange={(e) => setAccount({...account, currency_id: e.value})} placeholder="Seleccione Moneda" />
                 </div>
 
                 <div className="field">
@@ -145,8 +168,13 @@ const BankAccountsPage = () => {
                 </div>
 
                 <div className="field">
-                    <label>Saldo Inicial</label>
-                    <InputNumber value={account.initial_balance} onValueChange={(e) => setAccount({...account, initial_balance: e.value})} mode="currency" currency={account.currency_id === 'GTQ' ? 'GTQ' : 'USD'} locale={account.currency_id === 'GTQ' ? 'es-GT' : 'en-US'} />
+                <label htmlFor="initial_balance">Saldo Inicial</label>
+                <InputText 
+                id="initial_balance" 
+                value={account.initial_balance} 
+                onChange={(e) => setAccount({...account, initial_balance: e.target.value})} 
+                placeholder="Ej: 110000.00" 
+                />
                 </div>
             </Dialog>
 
