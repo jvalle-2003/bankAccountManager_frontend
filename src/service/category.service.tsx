@@ -1,8 +1,8 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:3001/api/currencies';
+const API_URL = 'http://localhost:3001/api/categories';
 
-export const CurrencyService = {
+export const CategoryService = {
     // Obtener todos los registros
     async getAll() {
         const res = await axios.get(API_URL);

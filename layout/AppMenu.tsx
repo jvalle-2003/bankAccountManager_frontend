@@ -126,6 +126,21 @@ const AppMenu = () => {
                     icon: 'pi pi-fw pi-wallet', 
                     to: '/pages/permissions' 
                 },
+                { 
+                    label: 'Categorias', 
+                    icon: 'pi pi-fw pi-wallet', 
+                    to: '/pages/categories' 
+                },
+                { 
+                    label: 'Transacciones', 
+                    icon: 'pi pi-fw pi-wallet', 
+                    to: '/pages/transactions' 
+                },
+                { 
+                    label: 'Historial de Saldos', 
+                    icon: 'pi pi-fw pi-wallet', 
+                    to: '/pages/balance-history' 
+                },
                 // {
                 //     label: 'Timeline',
                 //     icon: 'pi pi-fw pi-calendar',
