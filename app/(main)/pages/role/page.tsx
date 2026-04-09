@@ -9,7 +9,7 @@ import { InputText } from 'primereact/inputtext';
 import { Toolbar } from 'primereact/toolbar';
 import { Toast } from 'primereact/toast';
 import { InputSwitch } from 'primereact/inputswitch';
-import { RoleService } from '../../../../src/service/role.service'; // Ajusta la ruta
+import { RoleService } from '../../../../src/service/role.service';
 
 const Role = () => {
     const emptyRole = {
@@ -45,7 +45,7 @@ const Role = () => {
     };
 
     const saveRole = async () => {
-        // Validación: role_name es obligatorio según Sequelize
+        
         if (!role.role_name.trim()) {
             toast.current?.show({ severity: "warn", summary: "Requerido", detail: "El nombre del rol es obligatorio", life: 3000 });
             return;
@@ -116,7 +116,7 @@ const Role = () => {
                         </div>
 
                         <div className="field">
-                            <label htmlFor="description" className="font-bold">Descripción (Máx 10)</label>
+                            <label htmlFor="description" className="font-bold">Descripción </label>
                             <InputText id="description" value={role.description} onChange={(e) => setRole({ ...role, description: e.target.value })} maxLength={10} />
                         </div>
 

@@ -1,78 +1,131 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+
+import React, { useEffect, useRef, useState } from 'react';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
-import { Tag } from 'primereact/tag';
-import { AuditService } from '../../../../src/service/audit.service'; 
+import { Button } from 'primereact/button';
+import { Dialog } from 'primereact/dialog';
+import { InputText } from 'primereact/inputtext';
+import { InputTextarea } from 'primereact/inputtextarea';
+import { Toolbar } from 'primereact/toolbar';
+import { Toast } from 'primereact/toast';
+import { AuditService } from '../../../../src/service/audit.service';
 
 const AuditPage = () => {
+    const emptyAudit = {
+        audit_id: null,
+        description: "",
+        last_login: null,
+        last_ip: "",
+        user_id: ""
+    };
+
     const [audits, setAudits] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [audit, setAudit] = useState<any>(emptyAudit);
+    const [auditDialog, setAuditDialog] = useState(false);
+    const [deleteDialog, setDeleteDialog] = useState(false);
+    const toast = useRef<Toast>(null);
 
     useEffect(() => {
         loadAudits();
     }, []);
 
     const loadAudits = async () => {
-        try {
-            const data = await AuditService.getAll();
-            setAudits(data);
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setLoading(false);
+        const data = await AuditService.getAll();
+        setAudits(data);
+    };
+
+    const openNew = () => {
+        setAudit(emptyAudit);
+        setAuditDialog(true);
+    };
+
+    const editAudit = (rowData: any) => {
+        setAudit({ ...rowData });
+        setAuditDialog(true);
+    };
+
+    const saveAudit = async () => {
+        if (!audit.description || !audit.user_id) {
+            toast.current?.show({ severity: "warn", summary: "Atención", detail: "Descripción y Usuario son obligatorios", life: 3000 });
+            return;
         }
+
+        if (audit.audit_id) {
+            await AuditService.update(audit.audit_id, audit);
+        } else {
+            await AuditService.create(audit);
+        }
+
+        toast.current?.show({ severity: "success", summary: "Éxito", detail: audit.audit_id ? "Registro actualizado" : "Registro creado", life: 3000 });
+        setAuditDialog(false);
+        loadAudits();
     };
 
-    // Formateador de Fechas (Sequelize Date -> String legible)
-    const formatDate = (value: string) => {
-        if (!value) return "N/A";
-        return new Date(value).toLocaleString('es-ES', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+    const deleteAudit = async () => {
+        await AuditService.delete(audit.audit_id);
+        toast.current?.show({ severity: "success", summary: "Eliminado", detail: "Registro eliminado", life: 3000 });
+        setDeleteDialog(false);
+        loadAudits();
     };
 
-    // Templates para la tabla
-    const dateBodyTemplate = (rowData: any) => formatDate(rowData.last_login);
-    const activityBodyTemplate = (rowData: any) => formatDate(rowData.last_activity);
-    
+
+    const dateBodyTemplate = (rowData: any) => {
+        return rowData.last_activity ? new Date(rowData.last_activity).toLocaleString() : '-';
+    };
+
     const userBodyTemplate = (rowData: any) => {
-        // Asumiendo que el backend hace el 'include' del modelo User
-        return rowData.User ? `${rowData.User.username}` : `ID: ${rowData.user_id}`;
+        return rowData.User ? rowData.User.username : `ID: ${rowData.user_id}`;
     };
 
-    const ipBodyTemplate = (rowData: any) => {
-        return <Tag severity="info" value={rowData.last_ip || 'Desconocida'} />;
-    };
+    const actionBodyTemplate = (rowData: any) => (
+        <>
+            <Button icon="pi pi-pencil" rounded severity="success" className="mr-2" onClick={() => editAudit(rowData)} />
+            <Button icon="pi pi-trash" rounded severity="danger" onClick={() => { setAudit(rowData); setDeleteDialog(true); }} />
+        </>
+    );
 
     return (
         <div className="grid">
             <div className="col-12">
                 <div className="card">
-                    <h5>Historial de Auditoría</h5>
-                    <p>Registro de actividad de usuarios e inicios de sesión.</p>
-                    
-                    <DataTable 
-                        value={audits} 
-                        paginator 
-                        rows={10} 
-                        loading={loading}
-                        responsiveLayout="scroll"
-                        emptyMessage="No se encontraron registros de auditoría."
-                        sortField="last_activity" 
-                        sortOrder={-1} // Mostrar lo más reciente primero
-                    >
+                    <Toast ref={toast} />
+                    <Toolbar className="mb-4" left={() => <Button label="Nueva Auditoría" icon="pi pi-plus" severity="success" onClick={openNew} />} />
+
+                    <DataTable value={audits} paginator rows={10} responsiveLayout="scroll" emptyMessage="Sin registros de auditoría">
                         <Column field="audit_id" header="ID" sortable />
-                        <Column header="Usuario" body={userBodyTemplate} sortable sortField="user_id" />
-                        <Column field="description" header="Acción / Descripción" />
-                        <Column header="Último Login" body={dateBodyTemplate} sortable />
-                        <Column header="Última Actividad" body={activityBodyTemplate} sortable />
-                        <Column header="Dirección IP" body={ipBodyTemplate} />
+                        <Column header="Usuario" body={userBodyTemplate} sortable />
+                        <Column field="description" header="Descripción" />
+                        <Column field="last_ip" header="IP" />
+                        <Column header="Fecha Actividad" body={dateBodyTemplate} sortable />
+                        <Column body={actionBodyTemplate} header="Acciones" />
                     </DataTable>
+
+                    {/* DIÁLOGO CREAR/EDITAR */}
+                    <Dialog visible={auditDialog} style={{ width: '450px' }} header="Detalle de Auditoría" modal onHide={() => setAuditDialog(false)}
+                        footer={<><Button label="Cancelar" text onClick={() => setAuditDialog(false)} /><Button label="Guardar" text onClick={saveAudit} /></>}>
+                        
+                        <div className="field">
+                            <label htmlFor="user_id" className="block">ID Usuario</label>
+                            <InputText id="user_id" value={audit.user_id} onChange={(e) => setAudit({ ...audit, user_id: e.target.value })} className="w-full" />
+                        </div>
+
+                        <div className="field mt-3">
+                            <label htmlFor="description" className="block">Descripción</label>
+                            <InputTextarea id="description" value={audit.description} onChange={(e) => setAudit({ ...audit, description: e.target.value })} rows={3} className="w-full" />
+                        </div>
+
+                        <div className="field mt-3">
+                            <label htmlFor="last_ip" className="block">Dirección IP</label>
+                            <InputText id="last_ip" value={audit.last_ip} onChange={(e) => setAudit({ ...audit, last_ip: e.target.value })} className="w-full" />
+                        </div>
+                    </Dialog>
+
+                    {/* DIÁLOGO ELIMINAR */}
+                    <Dialog visible={deleteDialog} style={{ width: '400px' }} header="Confirmar" modal onHide={() => setDeleteDialog(false)}
+                        footer={<><Button label="No" text onClick={() => setDeleteDialog(false)} /><Button label="Sí" text onClick={deleteAudit} /></>}>
+                        <p>¿Desea eliminar este registro de auditoría permanentemente?</p>
+                    </Dialog>
                 </div>
             </div>
         </div>

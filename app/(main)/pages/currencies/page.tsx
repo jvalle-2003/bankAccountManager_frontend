@@ -8,21 +8,31 @@ import { Dialog } from 'primereact/dialog';
 import { InputText } from 'primereact/inputtext';
 import { Toolbar } from 'primereact/toolbar';
 import { Toast } from 'primereact/toast';
+import { Dropdown } from 'primereact/dropdown';
+import { Password } from 'primereact/password';
 
-import { CurrencyService } from '../../../../src/service/currency.service';
+import { UserService } from '../../../../src/service/user.service';
+import { RoleService } from '../../../../src/service/role.service';
 
-const Currency = () => {
+const UserPage = () => {
 
-    const emptyCurrency = {
-        id_currency: "",
-        name: "",
-        symbol: "",
-        state: true
+    const emptyUser = {
+        user_id: null,
+        first_name: "",
+        second_name: "",
+        third_name: "",
+        first_surname: "",
+        second_surname: "",
+        email: "",
+        username: "",
+        password: "",
+        role_id: null
     };
 
-    const [currencies, setCurrencies] = useState<any[]>([]);
-    const [currency, setCurrency] = useState<any>(emptyCurrency);
-    const [currencyDialog, setCurrencyDialog] = useState(false);
+    const [users, setUsers] = useState<any[]>([]);
+    const [roles, setRoles] = useState<any[]>([]);
+    const [user, setUser] = useState<any>(emptyUser);
+    const [userDialog, setUserDialog] = useState(false);
     const [deleteDialog, setDeleteDialog] = useState(false);
 
     const toast = useRef<Toast>(null);
@@ -31,111 +41,122 @@ const Currency = () => {
     // LOAD DATA
     // ===============================
     useEffect(() => {
-        loadCurrencies();
+        loadData();
     }, []);
 
-    const loadCurrencies = async () => {
-        const data = await CurrencyService.getAll();
-        setCurrencies(data);
+    const loadData = async () => {
+        try {
+            const [userData, roleData] = await Promise.all([
+                UserService.getAll(),
+                RoleService.getAll()
+            ]);
+            setUsers(userData);
+            setRoles(roleData);
+        } catch (error) {
+            toast.current?.show({
+                severity: "error",
+                summary: "Error",
+                detail: "No se pudieron cargar los datos",
+                life: 3000
+            });
+        }
     };
 
     // ===============================
     // CREATE / EDIT
     // ===============================
     const openNew = () => {
-        setCurrency(emptyCurrency);
-        setCurrencyDialog(true);
+        setUser(emptyUser);
+        setUserDialog(true);
     };
 
-    const editCurrency = (rowData: any) => {
-        setCurrency({ ...rowData });
-        setCurrencyDialog(true);
+    const editUser = (rowData: any) => {
+        setUser({ ...rowData });
+        setUserDialog(true);
     };
 
-    const hideDialog = () => setCurrencyDialog(false);
+    const hideDialog = () => setUserDialog(false);
 
-    const saveCurrency = async () => {
-
-        if (!currency.id_currency || !currency.name) {
+    const saveUser = async () => {
+        // Validación básica
+        if (!user.first_name || !user.first_surname || !user.email || !user.username || !user.role_id) {
             toast.current?.show({
                 severity: "warn",
-                summary: "Campos requeridos",
-                detail: "Complete la información",
+                summary: "Atención",
+                detail: "Complete los campos obligatorios",
                 life: 3000
             });
             return;
         }
 
-        const exists = currencies.find(
-            c => c.id_currency === currency.id_currency
-        );
+        try {
+            if (user.user_id) {
+                await UserService.update(user.user_id, user);
+            } else {
+                await UserService.create(user);
+            }
 
-        if (exists) {
-            await CurrencyService.update(currency.id_currency, currency);
-        } else {
-            await CurrencyService.create(currency);
+            toast.current?.show({
+                severity: "success",
+                summary: "Éxito",
+                detail: user.user_id ? "Usuario actualizado" : "Usuario creado",
+                life: 3000
+            });
+
+            setUserDialog(false);
+            loadData();
+        } catch (error: any) {
+            toast.current?.show({
+                severity: "error",
+                summary: "Error",
+                detail: "Error al procesar la solicitud",
+                life: 3000
+            });
         }
-
-        toast.current?.show({
-            severity: "success",
-            summary: "Éxito",
-            detail: exists ? "Moneda actualizada" : "Moneda creada",
-            life: 3000
-        });
-
-        setCurrencyDialog(false);
-        loadCurrencies();
     };
 
     // ===============================
     // DELETE
     // ===============================
     const confirmDelete = (rowData: any) => {
-        setCurrency(rowData);
+        setUser(rowData);
         setDeleteDialog(true);
     };
 
-    const deleteCurrency = async () => {
-
-        await CurrencyService.delete(currency.id_currency);
-
-        toast.current?.show({
-            severity: "success",
-            summary: "Eliminado",
-            detail: "Moneda eliminada",
-            life: 3000
-        });
-
-        setDeleteDialog(false);
-        loadCurrencies();
+    const deleteUser = async () => {
+        try {
+            await UserService.delete(user.user_id);
+            toast.current?.show({
+                severity: "success",
+                summary: "Eliminado",
+                detail: "Usuario eliminado",
+                life: 3000
+            });
+            setDeleteDialog(false);
+            loadData();
+        } catch (error) {
+            toast.current?.show({
+                severity: "error",
+                summary: "Error",
+                detail: "No se pudo eliminar el usuario",
+                life: 3000
+            });
+        }
     };
 
     // ===============================
-    // TABLE ACTIONS
+    // TEMPLATES
     // ===============================
     const actionBodyTemplate = (rowData: any) => (
         <>
-            <Button icon="pi pi-pencil"
-                rounded severity="success"
-                className="mr-2"
-                onClick={() => editCurrency(rowData)}
-            />
-
-            <Button icon="pi pi-trash"
-                rounded severity="danger"
-                onClick={() => confirmDelete(rowData)}
-            />
+            <Button icon="pi pi-pencil" rounded severity="success" className="mr-2" onClick={() => editUser(rowData)} />
+            <Button icon="pi pi-trash" rounded severity="danger" onClick={() => confirmDelete(rowData)} />
         </>
     );
 
-    const leftToolbarTemplate = () => (
-        <Button
-            label="Nueva Moneda"
-            icon="pi pi-plus"
-            severity="success"
-            onClick={openNew}
-        />
-    );
+    const fullNameTemplate = (rowData: any) => {
+        return `${rowData.first_name} ${rowData.first_surname} ${rowData.second_surname || ""}`;
+    };
 
     // ===============================
     // RENDER
@@ -144,74 +165,100 @@ const Currency = () => {
         <div className="grid">
             <div className="col-12">
                 <div className="card">
-
                     <Toast ref={toast} />
 
-                    <Toolbar className="mb-4" left={leftToolbarTemplate} />
+                    <Toolbar className="mb-4" left={() => (
+                        <Button label="Nuevo Usuario" icon="pi pi-plus" severity="success" onClick={openNew} />
+                    )} />
 
                     <DataTable
-                        value={currencies}
+                        value={users}
                         paginator
                         rows={10}
                         responsiveLayout="scroll"
-                        emptyMessage="No hay monedas registradas"
+                        emptyMessage="No hay usuarios registrados"
                     >
-                        <Column field="id_currency" header="Código" sortable />
-                        <Column field="name" header="Nombre" sortable />
-                        <Column field="symbol" header="Símbolo" />
-                        <Column
-                            header="Activa"
-                            body={(row) => row.state ? "✅" : "❌"}
-                        />
+                        <Column field="username" header="Usuario" sortable />
+                        <Column header="Nombre Completo" body={fullNameTemplate} />
+                        <Column field="email" header="Correo" sortable />
+                        <Column field="Role.role_name" header="Rol" />
                         <Column body={actionBodyTemplate} header="Acciones" />
                     </DataTable>
 
-                    {/* CREATE / EDIT */}
+                    {/* FORM DIALOG */}
                     <Dialog
-                        visible={currencyDialog}
-                        style={{ width: '450px' }}
-                        header="Moneda"
+                        visible={userDialog}
+                        style={{ width: '600px' }}
+                        header="Detalles de Usuario"
                         modal
+                        className="p-fluid"
                         onHide={hideDialog}
                         footer={
                             <>
                                 <Button label="Cancelar" text onClick={hideDialog} />
-                                <Button label="Guardar" text onClick={saveCurrency} />
+                                <Button label="Guardar" text onClick={saveUser} />
                             </>
                         }
                     >
-                        <div className="field">
-                            <label>Código</label>
-                            <InputText
-                                value={currency.id_currency}
-                                onChange={(e) =>
-                                    setCurrency({ ...currency, id_currency: e.target.value })
-                                }
-                            />
+                        <div className="formgrid grid">
+                            <div className="field col">
+                                <label>Primer Nombre *</label>
+                                <InputText value={user.first_name} onChange={(e) => setUser({ ...user, first_name: e.target.value })} />
+                            </div>
+                            <div className="field col">
+                                <label>Segundo Nombre</label>
+                                <InputText value={user.second_name} onChange={(e) => setUser({ ...user, second_name: e.target.value })} />
+                            </div>
+                        </div>
+
+                        <div className="formgrid grid">
+                            <div className="field col">
+                                <label>Primer Apellido *</label>
+                                <InputText value={user.first_surname} onChange={(e) => setUser({ ...user, first_surname: e.target.value })} />
+                            </div>
+                            <div className="field col">
+                                <label>Segundo Apellido</label>
+                                <InputText value={user.second_surname} onChange={(e) => setUser({ ...user, second_surname: e.target.value })} />
+                            </div>
                         </div>
 
                         <div className="field">
-                            <label>Nombre</label>
-                            <InputText
-                                value={currency.name}
-                                onChange={(e) =>
-                                    setCurrency({ ...currency, name: e.target.value })
-                                }
-                            />
+                            <label>Email *</label>
+                            <InputText value={user.email} onChange={(e) => setUser({ ...user, email: e.target.value })} />
                         </div>
 
-                        <div className="field">
-                            <label>Símbolo</label>
-                            <InputText
-                                value={currency.symbol}
-                                onChange={(e) =>
-                                    setCurrency({ ...currency, symbol: e.target.value })
-                                }
-                            />
+                        <div className="formgrid grid">
+                            <div className="field col">
+                                <label>Username *</label>
+                                <InputText value={user.username} onChange={(e) => setUser({ ...user, username: e.target.value })} />
+                            </div>
+                            <div className="field col">
+                                <label>Rol *</label>
+                                <Dropdown 
+                                    value={user.role_id} 
+                                    options={roles} 
+                                    onChange={(e) => setUser({ ...user, role_id: e.value })} 
+                                    optionLabel="role_name" 
+                                    optionValue="role_id" 
+                                    placeholder="Seleccione un Rol" 
+                                />
+                            </div>
                         </div>
+
+                        {!user.user_id && (
+                            <div className="field">
+                                <label>Contraseña *</label>
+                                <Password 
+                                    value={user.password} 
+                                    onChange={(e: any) => setUser({ ...user, password: e.target.value })} 
+                                    toggleMask 
+                                    feedback={false} 
+                                />
+                            </div>
+                        )}
                     </Dialog>
 
-                    {/* DELETE */}
+                    {/* DELETE DIALOG */}
                     <Dialog
                         visible={deleteDialog}
                         style={{ width: '400px' }}
@@ -221,13 +268,11 @@ const Currency = () => {
                         footer={
                             <>
                                 <Button label="No" text onClick={() => setDeleteDialog(false)} />
-                                <Button label="Sí" text onClick={deleteCurrency} />
+                                <Button label="Sí" text onClick={deleteUser} />
                             </>
                         }
                     >
-                        <p>
-                            ¿Desea eliminar la moneda <b>{currency.name}</b>?
-                        </p>
+                        <p>¿Desea eliminar al usuario <b>{user.username}</b>?</p>
                     </Dialog>
 
                 </div>
@@ -236,4 +281,4 @@ const Currency = () => {
     );
 };
 
-export default Currency;
+export default UserPage;
