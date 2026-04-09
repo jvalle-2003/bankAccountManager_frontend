@@ -11,6 +11,10 @@ import { Toast } from 'primereact/toast';
 import React, { useEffect, useRef, useState } from 'react';
 import { reconciliationsService } from '@/src/service/reconciliations.service';
 import { Reconciliation } from '@/types';
+import { usePermission } from '@/src/hooks/usePermission';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const ReconciliationsPage = () => {
     // Estados
@@ -22,6 +26,17 @@ const ReconciliationsPage = () => {
     const [isEditing, setIsEditing] = useState(false);
     const [globalFilter, setGlobalFilter] = useState('');
     
+    // ==========================================
+    // HOOK DE PERMISOS
+    // ==========================================
+    const { hasPermission, loading: permissionLoading } = usePermission();
+    
+    // Verificar permisos específicos
+    const canCreate = hasPermission('CREAR_CONCILIACION');
+    const canEdit = hasPermission('EDITAR_CONCILIACION');
+    const canDelete = hasPermission('ELIMINAR_CONCILIACION');
+    const canView = hasPermission('VER_CONCILIACIONES');
+    
     // Opciones para el dropdown de estado
     const statusOptions = [
         { label: 'En Proceso', value: 'IN_PROCESS' },
@@ -29,15 +44,14 @@ const ReconciliationsPage = () => {
         { label: 'Diferencias', value: 'DIFFERENCES' }
     ];
 
-    // Referencias
     const toast = useRef<Toast>(null);
 
-    // Cargar datos al iniciar
     useEffect(() => {
-        loadReconciliations();
-    }, []);
+        if (canView) {
+            loadReconciliations();
+        }
+    }, [canView]);
 
-    // Función para cargar conciliaciones
     const loadReconciliations = async () => {
         setLoading(true);
         try {
@@ -54,8 +68,135 @@ const ReconciliationsPage = () => {
         }
     };
 
-    // Abrir diálogo para nueva conciliación
+    // ==========================================
+    // FUNCIÓN: Exportar a Excel
+    // ==========================================
+    const exportToExcel = () => {
+        if (!reconciliations || reconciliations.length === 0) {
+            toast.current?.show({ 
+                severity: 'warn', 
+                summary: 'Sin datos', 
+                detail: 'No hay conciliaciones para exportar' 
+            });
+            return;
+        }
+
+        const data = reconciliations.map(row => ({
+            'ID': row.reconciliation_id,
+            'Cuenta ID': row.account_id,
+            'Año': row.year,
+            'Mes': row.month,
+            'Mes Nombre': new Date(0, row.month - 1).toLocaleString('es', { month: 'long' }),
+            'Fecha Inicio': row.start_date,
+            'Fecha Fin': row.end_date,
+            'Fecha Conciliación': row.reconciliation_date,
+            'Estado': row.status === 'IN_PROCESS' ? 'En Proceso' : row.status === 'RECONCILED' ? 'Conciliado' : 'Diferencias',
+            'Saldo Inicial Banco': row.bank_initial_balance || 0,
+            'Saldo Final Banco': row.bank_final_balance || 0,
+            'Saldo Inicial Libros': row.book_initial_balance || 0,
+            'Saldo Final Libros': row.book_final_balance || 0,
+            'Diferencia': (row.bank_final_balance || 0) - (row.book_final_balance || 0),
+            'Observaciones': row.observations || ''
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(data);
+        ws['!cols'] = [
+            { wch: 8 }, { wch: 12 }, { wch: 8 }, { wch: 8 }, { wch: 15 },
+            { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 15 }, { wch: 18 },
+            { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 30 }
+        ];
+        
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Conciliaciones');
+        const fecha = new Date().toISOString().split('T')[0];
+        XLSX.writeFile(wb, `conciliaciones_${fecha}.xlsx`);
+        
+        toast.current?.show({ 
+            severity: 'success', 
+            summary: 'Exportado', 
+            detail: 'Archivo Excel generado correctamente' 
+        });
+    };
+
+    // ==========================================
+    // FUNCIÓN: Exportar a PDF
+    // ==========================================
+    const exportToPDF = () => {
+        if (!reconciliations || reconciliations.length === 0) {
+            toast.current?.show({ 
+                severity: 'warn', 
+                summary: 'Sin datos', 
+                detail: 'No hay conciliaciones para exportar a PDF' 
+            });
+            return;
+        }
+
+        const doc = new jsPDF({ orientation: 'landscape' });
+        
+        // Título
+        doc.setFontSize(18);
+        doc.text('Reporte de Conciliaciones Bancarias', 14, 22);
+        doc.setFontSize(10);
+        doc.text(`Generado: ${new Date().toLocaleString()}`, 14, 30);
+        doc.text(`Total de conciliaciones: ${reconciliations.length}`, 14, 37);
+        
+        // Preparar datos para tabla
+        const tableData = reconciliations.map(row => [
+            row.reconciliation_id,
+            row.account_id,
+            row.year,
+            row.month,
+            row.start_date,
+            row.end_date,
+            row.status === 'IN_PROCESS' ? 'En Proceso' : row.status === 'RECONCILED' ? 'Conciliado' : 'Diferencias',
+            `Q${(row.bank_final_balance || 0).toFixed(2)}`,
+            `Q${(row.book_final_balance || 0).toFixed(2)}`,
+            `Q${((row.bank_final_balance || 0) - (row.book_final_balance || 0)).toFixed(2)}`
+        ]);
+        
+        // Crear tabla
+        autoTable(doc, {
+            head: [['ID', 'Cuenta', 'Año', 'Mes', 'Fecha Inicio', 'Fecha Fin', 'Estado', 'Saldo Banco', 'Saldo Libros', 'Diferencia']],
+            body: tableData,
+            startY: 45,
+            theme: 'striped',
+            headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
+            alternateRowStyles: { fillColor: [240, 240, 240] },
+            styles: { fontSize: 8, cellPadding: 2 },
+            columnStyles: {
+                0: { cellWidth: 15 },
+                1: { cellWidth: 20 },
+                2: { cellWidth: 15 },
+                3: { cellWidth: 15 },
+                4: { cellWidth: 25 },
+                5: { cellWidth: 25 },
+                6: { cellWidth: 30 },
+                7: { cellWidth: 30 },
+                8: { cellWidth: 30 },
+                9: { cellWidth: 30 }
+            }
+        });
+        
+        // Guardar PDF
+        const fecha = new Date().toISOString().split('T')[0];
+        doc.save(`conciliaciones_${fecha}.pdf`);
+        
+        toast.current?.show({ 
+            severity: 'success', 
+            summary: 'Exportado', 
+            detail: 'Archivo PDF generado correctamente' 
+        });
+    };
+
     const openNew = () => {
+        if (!canCreate) {
+            toast.current?.show({ 
+                severity: 'warn', 
+                summary: 'Acceso Denegado', 
+                detail: 'No tienes permiso para crear conciliaciones' 
+            });
+            return;
+        }
         setSelectedReconciliation({
             account_id: 0,
             month: new Date().getMonth() + 1,
@@ -72,20 +213,33 @@ const ReconciliationsPage = () => {
         setDialogVisible(true);
     };
 
-    // Abrir diálogo para editar
     const openEdit = (reconciliation: Reconciliation) => {
+        if (!canEdit) {
+            toast.current?.show({ 
+                severity: 'warn', 
+                summary: 'Acceso Denegado', 
+                detail: 'No tienes permiso para editar conciliaciones' 
+            });
+            return;
+        }
         setSelectedReconciliation({ ...reconciliation });
         setIsEditing(true);
         setDialogVisible(true);
     };
 
-    // Abrir diálogo para eliminar
     const openDelete = (reconciliation: Reconciliation) => {
+        if (!canDelete) {
+            toast.current?.show({ 
+                severity: 'warn', 
+                summary: 'Acceso Denegado', 
+                detail: 'No tienes permiso para eliminar conciliaciones' 
+            });
+            return;
+        }
         setSelectedReconciliation(reconciliation);
         setDeleteDialogVisible(true);
     };
 
-    // Cerrar diálogos
     const hideDialog = () => {
         setDialogVisible(false);
     };
@@ -94,7 +248,6 @@ const ReconciliationsPage = () => {
         setDeleteDialogVisible(false);
     };
 
-    // Guardar conciliación (crear o actualizar)
     const saveReconciliation = async () => {
         try {
             if (isEditing && selectedReconciliation.reconciliation_id) {
@@ -123,7 +276,6 @@ const ReconciliationsPage = () => {
         }
     };
 
-    // Eliminar conciliación
     const deleteReconciliation = async () => {
         try {
             if (selectedReconciliation.reconciliation_id) {
@@ -145,7 +297,6 @@ const ReconciliationsPage = () => {
         }
     };
 
-    // Template para estado
     const statusBodyTemplate = (rowData: Reconciliation) => {
         let severity = 'info';
         let label = '';
@@ -168,55 +319,69 @@ const ReconciliationsPage = () => {
         return <span className={`customer-badge status-${severity}`}>{label}</span>;
     };
 
-    // Template para fechas
     const dateBodyTemplate = (rowData: Reconciliation, field: string) => {
         return rowData[field as keyof Reconciliation] 
             ? new Date(rowData[field as keyof Reconciliation] as string).toLocaleDateString() 
             : '';
     };
 
-    // Template para montos
     const amountBodyTemplate = (rowData: Reconciliation, field: string) => {
         const value = rowData[field as keyof Reconciliation] as number;
-        return value ? `$${value.toFixed(2)}` : '$0.00';
+        return value ? `Q${value.toFixed(2)}` : 'Q0.00';
     };
 
-    // Template para los botones de acción
     const actionBodyTemplate = (rowData: Reconciliation) => {
         return (
             <div className="flex gap-2">
-                <Button 
-                    icon="pi pi-pencil" 
-                    rounded 
-                    text 
-                    severity="info" 
-                    onClick={() => openEdit(rowData)} 
-                    tooltip="Editar"
-                    tooltipOptions={{ position: 'top' }}
-                />
-                <Button 
-                    icon="pi pi-trash" 
-                    rounded 
-                    text 
-                    severity="danger" 
-                    onClick={() => openDelete(rowData)} 
-                    tooltip="Eliminar"
-                    tooltipOptions={{ position: 'top' }}
-                />
+                {canEdit && (
+                    <Button 
+                        icon="pi pi-pencil" 
+                        rounded 
+                        text 
+                        severity="info" 
+                        onClick={() => openEdit(rowData)} 
+                        tooltip="Editar"
+                        tooltipOptions={{ position: 'top' }}
+                    />
+                )}
+                {canDelete && (
+                    <Button 
+                        icon="pi pi-trash" 
+                        rounded 
+                        text 
+                        severity="danger" 
+                        onClick={() => openDelete(rowData)} 
+                        tooltip="Eliminar"
+                        tooltipOptions={{ position: 'top' }}
+                    />
+                )}
             </div>
         );
     };
 
-    // Header de la tabla
     const header = (
         <div className="flex flex-wrap align-items-center justify-content-between gap-2">
             <span className="text-xl text-900 font-bold">Conciliaciones</span>
             <div className="flex gap-2">
+                {canCreate && (
+                    <Button 
+                        label="Nuevo" 
+                        icon="pi pi-plus" 
+                        severity="success" 
+                        onClick={openNew} 
+                    />
+                )}
                 <Button 
-                    label="Nuevo" 
-                    icon="pi pi-plus" 
-                    severity="success" 
-                    onClick={openNew} 
+                    label="Exportar a Excel" 
+                    icon="pi pi-file-excel" 
+                    severity="info" 
+                    onClick={exportToExcel} 
+                />
+                <Button 
+                    label="Exportar a PDF" 
+                    icon="pi pi-file-pdf" 
+                    severity="danger" 
+                    onClick={exportToPDF} 
                 />
                 <span className="p-input-icon-left">
                     <i className="pi pi-search" />
@@ -230,7 +395,20 @@ const ReconciliationsPage = () => {
         </div>
     );
 
-    // Footer del diálogo
+    if (!canView && !permissionLoading) {
+        return (
+            <div className="grid">
+                <div className="col-12">
+                    <div className="card text-center">
+                        <i className="pi pi-lock" style={{ fontSize: '3rem', color: 'var(--red-500)' }} />
+                        <h3>Acceso Denegado</h3>
+                        <p>No tienes permiso para ver las conciliaciones.</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     const dialogFooter = (
         <div className="flex justify-content-end gap-2">
             <Button label="Cancelar" icon="pi pi-times" text onClick={hideDialog} />
@@ -238,7 +416,6 @@ const ReconciliationsPage = () => {
         </div>
     );
 
-    // Footer del diálogo de eliminar
     const deleteDialogFooter = (
         <div className="flex justify-content-end gap-2">
             <Button label="No" icon="pi pi-times" text onClick={hideDeleteDialog} />
@@ -278,7 +455,6 @@ const ReconciliationsPage = () => {
                 </div>
             </div>
 
-            {/* Diálogo para Crear/Editar */}
             <Dialog
                 visible={dialogVisible}
                 style={{ width: '600px' }}
@@ -352,8 +528,8 @@ const ReconciliationsPage = () => {
                         value={selectedReconciliation.bank_initial_balance}
                         onChange={(e) => setSelectedReconciliation({ ...selectedReconciliation, bank_initial_balance: e.value || 0 })}
                         mode="currency"
-                        currency="USD"
-                        locale="en-US"
+                        currency="GTQ"
+                        locale="es-GT"
                     />
                 </div>
                 <div className="field">
@@ -363,8 +539,8 @@ const ReconciliationsPage = () => {
                         value={selectedReconciliation.bank_final_balance}
                         onChange={(e) => setSelectedReconciliation({ ...selectedReconciliation, bank_final_balance: e.value || 0 })}
                         mode="currency"
-                        currency="USD"
-                        locale="en-US"
+                        currency="GTQ"
+                        locale="es-GT"
                     />
                 </div>
                 <div className="field">
@@ -374,8 +550,8 @@ const ReconciliationsPage = () => {
                         value={selectedReconciliation.book_initial_balance}
                         onChange={(e) => setSelectedReconciliation({ ...selectedReconciliation, book_initial_balance: e.value || 0 })}
                         mode="currency"
-                        currency="USD"
-                        locale="en-US"
+                        currency="GTQ"
+                        locale="es-GT"
                     />
                 </div>
                 <div className="field">
@@ -385,8 +561,8 @@ const ReconciliationsPage = () => {
                         value={selectedReconciliation.book_final_balance}
                         onChange={(e) => setSelectedReconciliation({ ...selectedReconciliation, book_final_balance: e.value || 0 })}
                         mode="currency"
-                        currency="USD"
-                        locale="en-US"
+                        currency="GTQ"
+                        locale="es-GT"
                     />
                 </div>
                 <div className="field">
@@ -409,7 +585,6 @@ const ReconciliationsPage = () => {
                 </div>
             </Dialog>
 
-            {/* Diálogo para Confirmar Eliminación */}
             <Dialog
                 visible={deleteDialogVisible}
                 style={{ width: '450px' }}
