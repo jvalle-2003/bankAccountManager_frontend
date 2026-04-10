@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Tag } from 'primereact/tag';
-import { AuditService } from '../../../../src/service/audit.service'; 
+import { auditService } from '../../../../src/service/audit.service'; 
 
 const AuditPage = () => {
     const [audits, setAudits] = useState<any[]>([]);
@@ -15,7 +15,7 @@ const AuditPage = () => {
 
     const loadAudits = async () => {
         try {
-            const data = await AuditService.getAll();
+            const data = await auditService.getAll();
             setAudits(data);
         } catch (error) {
             console.error(error);
