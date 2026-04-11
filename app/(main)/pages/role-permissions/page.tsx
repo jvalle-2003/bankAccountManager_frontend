@@ -9,7 +9,7 @@ import { InputText } from 'primereact/inputtext';
 import React, { useEffect, useRef, useState } from 'react';
 import { rolePermissionsService } from '@/src/service/rolePermissions.service';
 import { permissionsService } from '@/src/service/permissions.service';
-// import { rolesService } from '@/src/service/roles.service'; // Cuando tengas Roles
+//import { RoleService } from '@/src/service/role.service'; // Cuando tengas Roles
 import { RolePermission } from '@/types';
 
 interface RoleOption {

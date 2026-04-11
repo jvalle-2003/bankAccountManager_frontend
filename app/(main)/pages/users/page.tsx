@@ -51,19 +51,36 @@ const UserPage = () => {
     };
 
     const saveUser = async () => {
-        try {
-            if (user.user_id) {
-                await UserService.update(user.user_id, user);
-            } else {
-                await UserService.create(user);
-            }
-            toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Usuario Guardado', life: 3000 });
-            setUserDialog(false);
-            loadData();
-        } catch (error) {
-            toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo guardar', life: 3000 });
+    try {
+        // 1. Creamos una copia para no afectar el formulario visualmente
+        const userPayload = { ...user };
+
+        if (user.user_id) {
+            // Si existe ID, es una actualización
+            await UserService.update(user.user_id, userPayload);
+            toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Usuario Actualizado', life: 3000 });
+        } else {
+            // 2. CRÍTICO: Si es un usuario nuevo, eliminamos el user_id del objeto
+            // Esto evita enviar "user_id: null", que causa el Error 500
+            delete userPayload.user_id; 
+
+            await UserService.create(userPayload);
+            toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Usuario Creado', life: 3000 });
         }
-    };
+
+        setUserDialog(false);
+        setUser(emptyUser); // Limpiar el estado
+        loadData();         // Recargar la tabla
+    } catch (error) {
+        console.error("Error al guardar:", error);
+        toast.current?.show({ 
+            severity: 'error', 
+            summary: 'Error', 
+            detail: 'Error en el servidor (500). Revisa que el usuario o correo no estén duplicados.', 
+            life: 5000 
+        });
+    }
+};
 
     // Template para mostrar Nombre Completo en una sola columna
     const fullNameBodyTemplate = (rowData: any) => {
