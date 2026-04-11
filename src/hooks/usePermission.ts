@@ -16,7 +16,8 @@ export type PermissionName =
     | 'CREAR_HISTORIAL'
     | 'VER_HISTORIAL'
     | 'EDITAR_HISTORIAL'
-    | 'ELIMINAR_HISTORIAL';
+    | 'ELIMINAR_HISTORIAL'
+    | 'EXPORTAR_REPORTES';  // 👈 NUEVO PERMISO
 
 interface User {
     user_id: number;
@@ -29,30 +30,34 @@ interface User {
 }
 
 // ==========================================
-// PERMISOS POR ROL - ACTUALIZADO CON TUS ROLES REALES
+// PERMISOS POR ROL
 // ==========================================
 const ROLE_PERMISSIONS: Record<number, PermissionName[]> = {
     2: [ // ADMIN - todos los permisos
         'CREAR_CONCILIACION', 'VER_CONCILIACIONES', 'EDITAR_CONCILIACION', 'ELIMINAR_CONCILIACION',
         'CREAR_TRANSACCION', 'VER_TRANSACCIONES', 'EDITAR_TRANSACCION', 'CANCELAR_TRANSACCION',
         'CREAR_USUARIO', 'VER_USUARIOS', 'EDITAR_USUARIO', 'ELIMINAR_USUARIO',
-        'CREAR_HISTORIAL', 'VER_HISTORIAL', 'EDITAR_HISTORIAL', 'ELIMINAR_HISTORIAL'
+        'CREAR_HISTORIAL', 'VER_HISTORIAL', 'EDITAR_HISTORIAL', 'ELIMINAR_HISTORIAL',
+        'EXPORTAR_REPORTES'  // 👈 ADMIN puede exportar
     ],
-    3: [ // USUARIO - solo lectura
+    3: [ // USUARIO - solo lectura (NO puede exportar)
         'VER_CONCILIACIONES',
         'VER_TRANSACCIONES',
         'VER_HISTORIAL'
+        // 👈 NO tiene EXPORTAR_REPORTES
     ],
-    4: [ // GERENTE - ver y editar (sin crear ni eliminar)
+    4: [ // GERENTE - ver y editar
         'VER_CONCILIACIONES', 'EDITAR_CONCILIACION',
         'VER_TRANSACCIONES', 'EDITAR_TRANSACCION',
         'VER_HISTORIAL', 'EDITAR_HISTORIAL',
-        'VER_USUARIOS'
+        'VER_USUARIOS',
+        'EXPORTAR_REPORTES'  // 👈 GERENTE puede exportar
     ],
-    5: [ // ANALISTA - ver y crear (sin editar ni eliminar)
+    5: [ // ANALISTA - ver y crear
         'CREAR_CONCILIACION', 'VER_CONCILIACIONES',
         'CREAR_TRANSACCION', 'VER_TRANSACCIONES',
-        'CREAR_HISTORIAL', 'VER_HISTORIAL'
+        'CREAR_HISTORIAL', 'VER_HISTORIAL',
+        'EXPORTAR_REPORTES'  // 👈 ANALISTA puede exportar
     ],
 };
 
