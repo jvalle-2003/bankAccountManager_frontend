@@ -63,9 +63,19 @@ const AuditPage = () => {
     };
 
     const formatDate = (value: string) => {
-        if (!value) return "N/A";
-        return new Date(value).toLocaleString('es-ES');
-    };
+    if (!value) return "N/A";
+
+    // Mantenemos la fecha original, pero forzamos a que se muestre en UTC
+    return new Date(value).toLocaleString('es-GT', {
+        timeZone: 'UTC', 
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false 
+    });
+};
 
     const actionTemplate = (rowData: any) => {
     // Convertimos el texto a mayúsculas para que sea fácil de buscar
@@ -112,7 +122,7 @@ const AuditPage = () => {
                         <Column header="Usuario" body={(row) => row.User?.username || `ID: ${row.user_id}`} sortable />
                         {/*<Column field="description" header="Acción" />*/}
                         <Column header="Acción" body={actionTemplate} />
-                        <Column header="Fecha Actividad" body={(row) => formatDate(row.last_activity)} sortable />
+                        <Column header="Fecha/Hora Actividad" body={(row) => formatDate(row.last_activity)} sortable />
                         <Column header="IP" body={(row) => {
                                                                 // Si la IP es ::1 o 127.0.0.1, mostramos la palabra "Localhost"
                                                                 const ipVisual = (row.last_ip === '::1' || row.last_ip === '127.0.0.1') 

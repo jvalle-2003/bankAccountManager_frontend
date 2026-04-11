@@ -9,8 +9,11 @@ import { Toolbar } from 'primereact/toolbar';
 import { Toast } from 'primereact/toast';
 import { Dropdown } from 'primereact/dropdown';
 import { Password } from 'primereact/password';
+import { Tag } from 'primereact/tag'; // NUEVO: Importación del componente Tag para los colores
 import { UserService } from '../../../../src/service/user.service';
 import { RoleService } from '../../../../src/service/role.service';
+import { InputSwitch } from 'primereact/inputswitch';
+
 const UserPage = () => {
     let emptyUser = {
         user_id: null,
@@ -22,7 +25,8 @@ const UserPage = () => {
         email: '',
         username: '',
         password: '',
-        role_id: null
+        role_id: null,
+        active: true // NUEVO: Es buena práctica inicializarlo en true
     };
 
     const [users, setUsers] = useState<any[]>([]);
@@ -51,48 +55,70 @@ const UserPage = () => {
     };
 
     const saveUser = async () => {
-    try {
-        // 1. Creamos una copia para no afectar el formulario visualmente
-        const userPayload = { ...user };
+        try {
+            const userPayload = { ...user };
 
-        if (user.user_id) {
-            // Si existe ID, es una actualización
-            await UserService.update(user.user_id, userPayload);
-            toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Usuario Actualizado', life: 3000 });
-        } else {
-            // 2. CRÍTICO: Si es un usuario nuevo, eliminamos el user_id del objeto
-            // Esto evita enviar "user_id: null", que causa el Error 500
-            delete userPayload.user_id; 
+            if (user.user_id) {
+                await UserService.update(user.user_id, userPayload);
+                toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Usuario Actualizado', life: 3000 });
+            } else {
+                delete userPayload.user_id; 
+                await UserService.create(userPayload);
+                toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Usuario Creado', life: 3000 });
+            }
 
-            await UserService.create(userPayload);
-            toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Usuario Creado', life: 3000 });
+            setUserDialog(false);
+            setUser(emptyUser); 
+            loadData();         
+        } catch (error) {
+            console.error("Error al guardar:", error);
+            toast.current?.show({ 
+                severity: 'error', 
+                summary: 'Error', 
+                detail: 'Error en el servidor (500). Revisa que el usuario o correo no estén duplicados.', 
+                life: 5000 
+            });
         }
+    };
 
-        setUserDialog(false);
-        setUser(emptyUser); // Limpiar el estado
-        loadData();         // Recargar la tabla
-    } catch (error) {
-        console.error("Error al guardar:", error);
-        toast.current?.show({ 
-            severity: 'error', 
-            summary: 'Error', 
-            detail: 'Error en el servidor (500). Revisa que el usuario o correo no estén duplicados.', 
-            life: 5000 
-        });
-    }
-};
+    // NUEVO: Función para ejecutar la "eliminación lógica" (inactivación)
+    const confirmDelete = async () => {
+        try {
+            if (user.user_id) {
+                await UserService.delete(user.user_id);
+                toast.current?.show({ severity: 'warn', summary: 'Usuario Inactivado', detail: `El usuario ${user.username} ha sido desactivado.`, life: 3000 });
+                setDeleteUserDialog(false);
+                setUser(emptyUser);
+                loadData(); // Recarga la tabla para que el estado pase a rojo automáticamente
+            }
+        } catch (error) {
+            toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo desactivar el usuario', life: 3000 });
+        }
+    };
 
-    // Template para mostrar Nombre Completo en una sola columna
     const fullNameBodyTemplate = (rowData: any) => {
         return `${rowData.first_name} ${rowData.first_surname}`;
     };
 
-    // Template para mostrar el nombre del Rol en lugar del ID
     const roleBodyTemplate = (rowData: any) => {
         const role = roles.find((r) => r.role_id === rowData.role_id);
         return role ? role.role_name : rowData.role_id;
     };
 
+    // ACTUALIZADO: Template para dibujar la etiqueta (Tag) de ACTIVO/INACTIVO
+    const statusBodyTemplate = (rowData: any) => {
+        // Ahora evaluamos que no sea false Y que no sea 0. 
+        // Si no existe (undefined) por ser un registro viejo, lo toma como Activo.
+        const isActive = rowData.active !== false && rowData.active !== 0; 
+
+        return (
+            <Tag 
+                severity={isActive ? 'success' : 'danger'} 
+                value={isActive ? 'ACTIVO' : 'INACTIVO'} 
+                rounded 
+            />
+        );
+    };
     const actionBodyTemplate = (rowData: any) => (
         <div className="flex gap-2">
             <Button icon="pi pi-pencil" rounded severity="success" onClick={() => { setUser({ ...rowData }); setUserDialog(true); }} />
@@ -112,9 +138,12 @@ const UserPage = () => {
                         <Column header="Nombre Completo" body={fullNameBodyTemplate} />
                         <Column field="email" header="Email" />
                         <Column header="Rol" body={roleBodyTemplate} />
+                        {/* NUEVO: Columna de Estado agregada justo antes de las acciones */}
+                        <Column header="Estado" body={statusBodyTemplate} sortable />
                         <Column body={actionBodyTemplate} header="Acciones" />
                     </DataTable>
 
+                    {/* Diálogo de Creación/Edición */}
                     <Dialog visible={userDialog} style={{ width: '600px' }} header="Detalles de Usuario" modal className="p-fluid" onHide={() => setUserDialog(false)}
                         footer={<><Button label="Cancelar" icon="pi pi-times" text onClick={() => setUserDialog(false)} /><Button label="Guardar" icon="pi pi-check" text onClick={saveUser} /></>}>
                         
@@ -161,7 +190,30 @@ const UserPage = () => {
                             <label>Contraseña</label>
                             <Password value={user.password} onChange={(e: any) => setUser({...user, password: e.target.value})} toggleMask feedback={false} />
                         </div>
+                       
+                        {user.user_id && (
+                            <div className="field flex align-items-center mt-4">
+                                <InputSwitch 
+                                    checked={user.active !== false && user.active !== 0} 
+                                    onChange={(e) => setUser({...user, active: e.value})} 
+                                />
+                                <label className="ml-2 mb-0 font-bold">
+                                    {user.active !== false && user.active !== 0 ? 'Usuario Activo' : 'Usuario Inactivo'}
+                                </label>
+                            </div>
+                        )}
+                        
                     </Dialog>
+
+                    {/* NUEVO: Diálogo de Confirmación para Desactivar. Sin esto, el botón de la basura no hace nada */}
+                    <Dialog visible={deleteUserDialog} style={{ width: '450px' }} header="Confirmar Acción" modal onHide={() => setDeleteUserDialog(false)}
+                        footer={<><Button label="No" icon="pi pi-times" text onClick={() => setDeleteUserDialog(false)} /><Button label="Sí, Desactivar" icon="pi pi-check" severity="danger" onClick={confirmDelete} /></>}>
+                        <div className="flex align-items-center justify-content-center">
+                            <i className="pi pi-exclamation-triangle mr-3" style={{ fontSize: '2rem' }} />
+                            {user && <span>¿Estás seguro de que deseas desactivar al usuario <b>{user.username}</b>?</span>}
+                        </div>
+                    </Dialog>
+
                 </div>
             </div>
         </div>
