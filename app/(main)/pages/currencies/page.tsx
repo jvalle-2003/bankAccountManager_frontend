@@ -14,7 +14,6 @@ import { CurrencyService } from '../../../../src/service/currency.service';
 const Currency = () => {
 
     const emptyCurrency = {
-        id_currency: "",
         name: "",
         symbol: "",
         state: true
@@ -56,7 +55,7 @@ const Currency = () => {
 
     const saveCurrency = async () => {
 
-        if (!currency.id_currency || !currency.name) {
+        if ( !currency.name) {
             toast.current?.show({
                 severity: "warn",
                 summary: "Campos requeridos",
@@ -180,15 +179,7 @@ const Currency = () => {
                             </>
                         }
                     >
-                        <div className="field">
-                            <label>Código</label>
-                            <InputText
-                                value={currency.id_currency}
-                                onChange={(e) =>
-                                    setCurrency({ ...currency, id_currency: e.target.value })
-                                }
-                            />
-                        </div>
+      
 
                         <div className="field">
                             <label>Nombre</label>

@@ -15,7 +15,6 @@ import { CategoryService } from '../../../../src/service/category.service';
 
 const Category = () => {
     const emptyCategory = {
-        category_id: "",
         category_name: "",
         movement_type: "",
         active: true
@@ -28,10 +27,22 @@ const Category = () => {
 
     const toast = useRef<Toast>(null);
 
-    const movementOptions = [
-    { label: 'Ingreso', value: 'INCOME' },
-    { label: 'Egreso', value: 'EXPENSE' }
+// Cambia tus opciones a esto:
+const movementOptions = [
+    { label: 'Ingreso', value: 'INGRESO' },
+    { label: 'Egreso', value: 'EGRESO' },
+    { label: 'Transferencia', value: 'TRANSFERENCIA' }
 ];
+
+// Y en el JSX del Dropdown:
+<Dropdown 
+    id="movement_type"
+    value={category.movement_type} 
+    options={movementOptions} 
+    onChange={(e) => setCategory({ ...category, movement_type: e.value })} 
+    placeholder="Seleccione el tipo" // Limpia el placeholder
+    className="w-full"
+/>
 
     useEffect(() => {
         loadCategories();
@@ -62,11 +73,11 @@ const Category = () => {
 
     const saveCategory = async () => {
         // Validación básica
-        if (!category.category_id || !category.category_name) {
+        if ( !category.category_name) {
             toast.current?.show({
                 severity: "warn",
                 summary: "Campos requeridos",
-                detail: "Complete el ID y el Nombre",
+                detail: "Complete el Nombre",
                 life: 3000
             });
             return;
@@ -177,16 +188,7 @@ const Category = () => {
                             </>
                         }
                     >
-                        <div className="field mb-3">
-                            <label htmlFor="id" className="block mb-2">Código/ID</label>
-                            <InputText
-                                id="id"
-                                value={category.category_id}
-                                onChange={(e) => setCategory({ ...category, category_id: e.target.value })}
-                                disabled={categories.some(c => c.category_id === category.category_id && category.category_id !== "")}
-                                className="w-full"
-                            />
-                        </div>
+
 
                         <div className="field mb-3">
                             <label htmlFor="name" className="block mb-2">Nombre</label>
