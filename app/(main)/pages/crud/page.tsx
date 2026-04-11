@@ -9,9 +9,10 @@ import { Toast } from 'primereact/toast';
 import { Toolbar } from 'primereact/toolbar';
 import { Dropdown } from 'primereact/dropdown';
 import React, { useEffect, useRef, useState } from 'react';
-import { Demo } from '@/types';
 import { BankAccountService } from '@/src/service/BankAccountService';
 import { CurrencyService } from '@/src/service/currency.service';
+// IMPORTACIÓN DE TU SERVICIO DE API EXTERNA
+import { CurrencyApiService } from '@/src/service/currencyApi.service';
 
 const BankAccountsPage = () => {
     let emptyAccount = {
@@ -33,26 +34,101 @@ const BankAccountsPage = () => {
     const [deleteDialog, setDeleteDialog] = useState(false);
     const toast = useRef<Toast>(null);
     const [currencies, setCurrencies] = useState<any[]>([]);
+    
+    const [exchangeRates, setExchangeRates] = useState<any>({ 
+        USD_to_GTQ: 0, 
+        GTQ_to_USD: 0,
+        HNL_to_USD: 0,
+        MXN_to_USD: 0,
+        NIO_to_USD: 0 
+    });
 
     useEffect(() => { loadData(); }, []);
 
     const loadData = async () => {
         try {
-            // Cargamos cuentas y también los catálogos para los Dropdowns
-            const [accs, bnks, typs, currs] = await Promise.all([
+            const [accs, bnks, typs, currs, rates] = await Promise.all([
                 BankAccountService.getAccounts(),
                 BankAccountService.getBanks(),
                 BankAccountService.getAccountTypes(),
-                CurrencyService.getAll()
-
+                CurrencyService.getAll(),
+                CurrencyApiService.getLiveRates()
             ]);
             setAccounts(accs);
             setBanks(bnks);
             setTypes(typs);
             setCurrencies(currs);
+            setExchangeRates(rates);
         } catch (e) {
             toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar datos' });
         }
+    };
+
+    const rateBodyTemplate = (rowData: any) => {
+        const moneda = currencies.find(c => c.id_currency === rowData.currency_id);
+        const simbolo = moneda?.symbol || '';
+
+        if (!exchangeRates.USD_to_GTQ) return <span>Cargando...</span>;
+
+        switch (simbolo) {
+            case '$':
+                return <span className="text-blue-600 font-bold">Q {exchangeRates.USD_to_GTQ.toFixed(2)}</span>;
+            case 'Q':
+                return <span className="text-green-600 font-bold">$ {exchangeRates.GTQ_to_USD.toFixed(4)}</span>;
+            case 'L':
+                return <span className="text-orange-600 font-bold">$ {exchangeRates.HNL_to_USD.toFixed(4)}</span>;
+            case 'MX$':
+                return <span className="text-red-600 font-bold">$ {exchangeRates.MXN_to_USD.toFixed(4)}</span>;
+            case 'C$':
+                return <span className="text-indigo-600 font-bold">$ {exchangeRates.NIO_to_USD.toFixed(4)}</span>;
+            default:
+                return <span className="text-500">Sin tasa</span>;
+        }
+    };
+
+    const equivalentBalanceTemplate = (rowData: any) => {
+        const saldo = Number(rowData.current_balance || 0);
+        const moneda = currencies.find(c => c.id_currency === rowData.currency_id);
+        const simbolo = moneda?.symbol || '';
+
+        if (!exchangeRates.USD_to_GTQ) return <span>---</span>;
+
+        let conversion = 0;
+        let simboloDestino = '$';
+        let colorClass = 'text-green-600';
+        let locale = 'en-US';
+
+        switch (simbolo) {
+            case '$':
+                conversion = saldo * exchangeRates.USD_to_GTQ;
+                simboloDestino = 'Q';
+                colorClass = 'text-blue-500';
+                locale = 'es-GT';
+                break;
+            case 'Q':
+                conversion = saldo * exchangeRates.GTQ_to_USD;
+                break;
+            case 'L':
+                conversion = saldo * exchangeRates.HNL_to_USD;
+                break;
+            case 'MX$':
+                conversion = saldo * exchangeRates.MXN_to_USD;
+                break;
+            case 'C$':
+                conversion = saldo * exchangeRates.NIO_to_USD;
+                break;
+            default:
+                return <span className="text-500">---</span>;
+        }
+
+        return (
+            <span className={`${colorClass} font-medium`}>
+                {simboloDestino} {conversion.toLocaleString(locale, { 
+                    minimumFractionDigits: 2, 
+                    maximumFractionDigits: 2 
+                })}
+            </span>
+        );
     };
 
     const saveAccount = async () => {
@@ -62,9 +138,11 @@ const BankAccountsPage = () => {
                 return;
             }
 
+            // CORRECCIÓN: Al guardar (crear o editar), igualamos el saldo actual al inicial
+            // para que los cambios en el formulario se reflejen en la base de datos.
             const dataToSave = { 
                 ...account, 
-                current_balance: account.account_id ? account.current_balance : account.initial_balance 
+                current_balance: account.initial_balance 
             };
             
             if (account.account_id) {
@@ -93,9 +171,9 @@ const BankAccountsPage = () => {
     };
 
     const currencyBodyTemplate = (rowData: any) => {
-    const monedaEncontrada = currencies.find(c => c.id_currency === rowData.currency_id);
-    return monedaEncontrada ? monedaEncontrada.name : rowData.currency_id;
-};
+        const monedaEncontrada = currencies.find(c => c.id_currency === rowData.currency_id);
+        return monedaEncontrada ? monedaEncontrada.name : rowData.currency_id;
+    };
 
     const actionBody = (rowData: any) => (
         <div className="flex gap-2">
@@ -107,37 +185,47 @@ const BankAccountsPage = () => {
     return (
         <div className="card">
             <Toast ref={toast} />
-            <Toolbar className="mb-4" left={() => (
-                <Button label="Nueva Cuenta" icon="pi pi-plus" severity="success" onClick={() => { setAccount(emptyAccount); setAccountDialog(true); }} />
-            )} />
+            <Toolbar className="mb-4" 
+                left={() => (
+                    <Button label="Nueva Cuenta" icon="pi pi-plus" severity="success" onClick={() => { setAccount(emptyAccount); setAccountDialog(true); }} />
+                )} 
+                right={() => (
+                    <div className="p-2 border-round bg-primary-reverse font-bold text-sm shadow-1">
+                        Ref. Hoy: 1 USD = Q {exchangeRates.USD_to_GTQ.toFixed(2)}
+                    </div>
+                )}
+            />
 
             <DataTable value={accounts} paginator rows={10} responsiveLayout="scroll" emptyMessage="No hay cuentas registradas.">
-    <Column field="account_alias" header="Nombre / Alias" sortable />
-    <Column field="account_number" header="No. Cuenta" sortable />
-    <Column field="Bank.bank_name" header="Banco" sortable />
-    <Column field="AccountType.type_name" header="Tipo" sortable />
-    <Column field="currency_id" header="Moneda" body={currencyBodyTemplate} sortable />
-    <Column 
-        field="current_balance" 
-        header="Saldo Actual" 
-        sortable 
-        body={(rowData) => { 
-            const monedaInfo = currencies.find(c => c.id_currency === rowData.currency_id);
-            const simbolo = monedaInfo ? monedaInfo.symbol : 'Q';
-            const locale = rowData.currency_id === 'USD' ? 'en-US' : 'es-GT'; 
-            return (
-                <span style={{ fontWeight: 'bold' }}>
-                    {simbolo} {Number(rowData.current_balance).toLocaleString(locale, { 
-                        minimumFractionDigits: 2, 
-                        maximumFractionDigits: 2 
-                    })}
-                </span>
-            );
-        }} 
-    />
-    
-    <Column body={actionBody} header="Acciones" />
-</DataTable>
+                <Column field="account_alias" header="Nombre / Alias" sortable />
+                <Column field="account_number" header="No. Cuenta" sortable />
+                <Column field="Bank.bank_name" header="Banco" sortable />
+                <Column field="AccountType.type_name" header="Tipo" sortable />
+                <Column field="currency_id" header="Moneda" body={currencyBodyTemplate} sortable />
+                
+                <Column 
+                    field="current_balance" 
+                    header="Saldo Actual" 
+                    sortable 
+                    body={(rowData) => { 
+                        const monedaInfo = currencies.find(c => c.id_currency === rowData.currency_id);
+                        const simbolo = monedaInfo ? monedaInfo.symbol : 'Q';
+                        const locale = rowData.currency_id === 'USD' ? 'en-US' : 'es-GT'; 
+                        return (
+                            <span style={{ fontWeight: 'bold' }}>
+                                {simbolo} {Number(rowData.current_balance).toLocaleString(locale, { 
+                                    minimumFractionDigits: 2, 
+                                    maximumFractionDigits: 2 
+                                })}
+                            </span>
+                        );
+                    }} 
+                />
+
+                <Column header="Tasa de Cambio" body={rateBodyTemplate} />
+                <Column header="Equivalente" body={equivalentBalanceTemplate} />
+                <Column body={actionBody} header="Acciones" />
+            </DataTable>
 
             <Dialog visible={accountDialog} style={{ width: '450px' }} header="Gestión de Cuenta Bancaria" modal className="p-fluid" onHide={() => setAccountDialog(false)}
                 footer={<><Button label="Cancelar" icon="pi pi-times" text onClick={() => setAccountDialog(false)} /><Button label="Guardar" icon="pi pi-check" onClick={saveAccount} /></>}>
@@ -168,13 +256,8 @@ const BankAccountsPage = () => {
                 </div>
 
                 <div className="field">
-                <label htmlFor="initial_balance">Saldo Inicial</label>
-                <InputText 
-                id="initial_balance" 
-                value={account.initial_balance} 
-                onChange={(e) => setAccount({...account, initial_balance: e.target.value})} 
-                placeholder="Ej: 110000.00" 
-                />
+                    <label htmlFor="initial_balance">Saldo Inicial / Actual</label>
+                    <InputText id="initial_balance" value={account.initial_balance} onChange={(e) => setAccount({...account, initial_balance: e.target.value})} placeholder="Ej: 110000.00" />
                 </div>
             </Dialog>
 
