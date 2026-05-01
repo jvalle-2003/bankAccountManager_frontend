@@ -242,6 +242,21 @@ const Transactions = () => {
         return category ? category.category_name + '/' + category.movement_type : 'Sin Categoría';
     };
 
+    const formatDate = (value: string) => {
+    if (!value) return "N/A";
+
+    // Mantenemos la fecha original, pero forzamos a que se muestre en UTC
+    return new Date(value).toLocaleString('es-GT', {
+        timeZone: 'UTC', 
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false 
+    });
+};
+
     return (
         <div className="card">
             <Toast ref={toast} />
