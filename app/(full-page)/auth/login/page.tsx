@@ -38,11 +38,23 @@ const LoginPage = () => {
                 password
             });
             
-            // Guardar datos del usuario en localStorage
-            localStorage.setItem('user', JSON.stringify(response.data.user));
-            
-            // Redirigir al dashboard
-            router.push('/pages/crud');
+            // ==========================================
+            // GUARDAR TOKEN Y DATOS DEL USUARIO (cambió aquí)
+            // ==========================================
+            if (response.data.success && response.data.token) {
+                // Guardar token en localStorage
+                localStorage.setItem('token', response.data.token);
+                // Guardar datos del usuario
+                localStorage.setItem('user', JSON.stringify(response.data.user));
+                
+                // Configurar token por defecto para axios (opcional)
+                axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
+                
+                // Redirigir al dashboard
+                router.push('/pages/crud');
+            } else {
+                setError('Respuesta inválida del servidor');
+            }
             
         } catch (error: any) {
             setError(error.response?.data?.message || 'Error al iniciar sesión');
@@ -117,13 +129,6 @@ const LoginPage = () => {
                                 onClick={handleLogin}
                                 disabled={loading}
                             />
-
-                            {/* NUEVO ENLACE DE REGISTRO */}
-                            <div className="text-center mt-3">
-                                <a href="/auth/register" className="font-medium no-underline text-blue-500">
-                                    ¿No tienes cuenta? Regístrate aquí
-                                </a>
-                            </div>
                         </div>
                     </div>
                 </div>
