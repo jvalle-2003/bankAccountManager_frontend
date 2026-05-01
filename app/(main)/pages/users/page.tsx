@@ -9,10 +9,13 @@ import { Toolbar } from 'primereact/toolbar';
 import { Toast } from 'primereact/toast';
 import { Dropdown } from 'primereact/dropdown';
 import { Password } from 'primereact/password';
-import { Tag } from 'primereact/tag'; // NUEVO: Importación del componente Tag para los colores
+import { Tag } from 'primereact/tag';
 import { UserService } from '../../../../src/service/user.service';
 import { RoleService } from '../../../../src/service/role.service';
 import { InputSwitch } from 'primereact/inputswitch';
+
+// Importación de la utilidad genérica de descargas
+import { downloadFileFromBackend } from '../../../../src/utils/download.utils';
 
 const UserPage = () => {
     let emptyUser = {
@@ -26,7 +29,7 @@ const UserPage = () => {
         username: '',
         password: '',
         role_id: null,
-        active: true // NUEVO: Es buena práctica inicializarlo en true
+        active: true 
     };
 
     const [users, setUsers] = useState<any[]>([]);
@@ -81,7 +84,6 @@ const UserPage = () => {
         }
     };
 
-    // NUEVO: Función para ejecutar la "eliminación lógica" (inactivación)
     const confirmDelete = async () => {
         try {
             if (user.user_id) {
@@ -89,11 +91,48 @@ const UserPage = () => {
                 toast.current?.show({ severity: 'warn', summary: 'Usuario Inactivado', detail: `El usuario ${user.username} ha sido desactivado.`, life: 3000 });
                 setDeleteUserDialog(false);
                 setUser(emptyUser);
-                loadData(); // Recarga la tabla para que el estado pase a rojo automáticamente
+                loadData(); 
             }
         } catch (error) {
             toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo desactivar el usuario', life: 3000 });
         }
+    };
+
+    // =====================================================================
+    // Función limpia que utiliza el helper genérico (AHORA INCLUYE 'csv')
+    // =====================================================================
+    const handleDownload = async (format: 'excel' | 'pdf' | 'csv') => {
+        try {
+            // URL específica para este módulo (usuarios)
+            const url = `http://localhost:3001/api/users/report/export?format=${format}`;
+            
+            await downloadFileFromBackend(url, 'Reporte_Usuarios', format);
+            
+            toast.current?.show({ severity: 'success', summary: 'Éxito', detail: `Reporte en ${format.toUpperCase()} descargado`, life: 3000 });
+        } catch (error) {
+            toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo descargar el reporte', life: 3000 });
+        }
+    };
+
+    // =====================================================================
+    // Templates para el Toolbar
+    // =====================================================================
+    const leftToolbarTemplate = () => {
+        return (
+            <div className="flex flex-wrap gap-2">
+                <Button label="Nuevo Usuario" icon="pi pi-plus" severity="success" onClick={openNew} />
+            </div>
+        );
+    };
+
+    const rightToolbarTemplate = () => {
+        return (
+            <div className="flex align-items-center justify-content-end gap-2">
+                <Button type="button" icon="pi pi-file-excel" severity="success" rounded onClick={() => handleDownload('excel')} tooltip="Descargar Excel" tooltipOptions={{ position: 'bottom' }} />
+                <Button type="button" icon="pi pi-file" severity="info" rounded onClick={() => handleDownload('csv')} tooltip="Descargar CSV" tooltipOptions={{ position: 'bottom' }} />
+                <Button type="button" icon="pi pi-file-pdf" severity="warning" rounded onClick={() => handleDownload('pdf')} tooltip="Descargar PDF" tooltipOptions={{ position: 'bottom' }} />
+            </div>
+        );
     };
 
     const fullNameBodyTemplate = (rowData: any) => {
@@ -105,12 +144,8 @@ const UserPage = () => {
         return role ? role.role_name : rowData.role_id;
     };
 
-    // ACTUALIZADO: Template para dibujar la etiqueta (Tag) de ACTIVO/INACTIVO
     const statusBodyTemplate = (rowData: any) => {
-        // Ahora evaluamos que no sea false Y que no sea 0. 
-        // Si no existe (undefined) por ser un registro viejo, lo toma como Activo.
         const isActive = rowData.active !== false && rowData.active !== 0; 
-
         return (
             <Tag 
                 severity={isActive ? 'success' : 'danger'} 
@@ -119,6 +154,7 @@ const UserPage = () => {
             />
         );
     };
+
     const actionBodyTemplate = (rowData: any) => (
         <div className="flex gap-2">
             <Button icon="pi pi-pencil" rounded severity="success" onClick={() => { setUser({ ...rowData }); setUserDialog(true); }} />
@@ -131,14 +167,15 @@ const UserPage = () => {
             <div className="col-12">
                 <div className="card">
                     <Toast ref={toast} />
-                    <Toolbar className="mb-4" left={() => <Button label="Nuevo Usuario" icon="pi pi-plus" severity="success" onClick={openNew} />} />
+                    
+                    {/* Toolbar actualizado */}
+                    <Toolbar className="mb-4" left={leftToolbarTemplate} right={rightToolbarTemplate} />
 
                     <DataTable value={users} paginator rows={10} responsiveLayout="scroll">
                         <Column field="username" header="Usuario" sortable />
                         <Column header="Nombre Completo" body={fullNameBodyTemplate} />
                         <Column field="email" header="Email" />
                         <Column header="Rol" body={roleBodyTemplate} />
-                        {/* NUEVO: Columna de Estado agregada justo antes de las acciones */}
                         <Column header="Estado" body={statusBodyTemplate} sortable />
                         <Column body={actionBodyTemplate} header="Acciones" />
                     </DataTable>
@@ -205,7 +242,7 @@ const UserPage = () => {
                         
                     </Dialog>
 
-                    {/* NUEVO: Diálogo de Confirmación para Desactivar. Sin esto, el botón de la basura no hace nada */}
+                    {/* Diálogo de Confirmación para Desactivar */}
                     <Dialog visible={deleteUserDialog} style={{ width: '450px' }} header="Confirmar Acción" modal onHide={() => setDeleteUserDialog(false)}
                         footer={<><Button label="No" icon="pi pi-times" text onClick={() => setDeleteUserDialog(false)} /><Button label="Sí, Desactivar" icon="pi pi-check" severity="danger" onClick={confirmDelete} /></>}>
                         <div className="flex align-items-center justify-content-center">
