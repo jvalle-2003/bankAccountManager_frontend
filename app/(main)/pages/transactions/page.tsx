@@ -13,6 +13,7 @@ import { Toolbar } from 'primereact/toolbar';
 import { Toast } from 'primereact/toast';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 
 import { TransactionService } from '../../../../src/service/transaction.service';
 import { BankAccountService } from '../../../../src/service/BankAccountService';
@@ -20,6 +21,105 @@ import { CategoryService } from '../../../../src/service/category.service';
 import { CurrencyService } from '../../../../src/service/currency.service';
 
 const Transactions = () => {
+    const [reportDialog, setReportDialog] = useState(false);
+    interface ReportFilters {
+        dateStart: Date | null | undefined;
+        dateEnd: Date | null | undefined;
+        account: any;
+        format: string;
+    }
+
+    const [reportFilters, setReportFilters] = useState<ReportFilters>({
+        dateStart: null,
+        dateEnd: null,
+        account: null,
+        format: 'pdf'
+    });
+
+    const exportFormats = [
+        { label: 'PDF', value: 'pdf' },
+        { label: 'Excel', value: 'xlsx' },
+        { label: 'CSV', value: 'csv' }
+    ];
+
+    const exportReport = () => {
+        let filteredData = transactions.filter((t: any) => {
+            // --- Filtro de Fechas ---
+            const tDate = new Date(t.transaction_date);
+            const start = reportFilters.dateStart ? new Date(reportFilters.dateStart) : null;
+            const end = reportFilters.dateEnd ? new Date(reportFilters.dateEnd) : null;
+
+            if (start && tDate < start) return false;
+            if (end && tDate > end) return false;
+
+            // --- Filtro de Cuenta (NUEVO) ---
+            // Si reportFilters.account es null (Todas), no filtramos.
+            // Si tiene valor, comparamos con el ID de la transacción.
+            if (reportFilters.account !== null && t.account_id !== reportFilters.account) {
+                return false;
+            }
+
+            return true;
+        });
+
+        if (filteredData.length === 0) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Sin datos',
+                detail: 'No hay transacciones que coincidan con los filtros',
+                life: 3000
+            });
+            return;
+        }
+
+        if (reportFilters.format === 'pdf') {
+            exportPDF(filteredData);
+        } else {
+            exportExcelCSV(filteredData, reportFilters.format);
+        }
+        setReportDialog(false);
+    };
+
+    const exportPDF = (data: any[]) => {
+        const doc = new jsPDF();
+        const tableRows = data.map((t) => [
+            t.transaction_id,
+            getAccountName(t.account_id),
+            t.transaction_type,
+            new Date(t.transaction_date).toLocaleDateString(),
+            `${getCurrencySymbol(t.currency_id)} ${t.amount}`,
+            t.cancelled ? 'Cancelada' : 'Activa'
+        ]);
+
+        autoTable(doc, {
+            head: [['ID', 'Cuenta', 'Tipo', 'Fecha', 'Monto', 'Estado']],
+            body: tableRows,
+            theme: 'grid'
+        });
+        doc.save('Reporte_Transacciones.pdf');
+    };
+
+    const exportExcelCSV = (data: any[], format: string) => {
+        const worksheetData = data.map((t) => ({
+            ID: t.transaction_id,
+            Cuenta: getAccountName(t.account_id),
+            Tipo: t.transaction_type,
+            Fecha: t.transaction_date,
+            Monto: t.amount,
+            Estado: t.cancelled ? 'Cancelada' : 'Activa'
+        }));
+
+        const worksheet = XLSX.utils.json_to_sheet(worksheetData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Transacciones');
+
+        if (format === 'xlsx') {
+            XLSX.writeFile(workbook, 'Reporte_Transacciones.xlsx');
+        } else {
+            XLSX.writeFile(workbook, 'Reporte_Transacciones.csv', { bookType: 'csv' });
+        }
+    };
+
     const emptyTransaction: any = {
         account_id: null,
         transaction_type: '',
@@ -29,7 +129,7 @@ const Transactions = () => {
         amount: 0,
         currency_id: null,
         concept: '',
-        beneficiary: ''
+        beneficiary: null
     };
 
     const [transactions, setTransactions] = useState([]);
@@ -45,10 +145,8 @@ const Transactions = () => {
     const generatePDF = (data: any) => {
         const doc = new jsPDF();
 
-        // Configuración de fuentes y colores
         const primaryColor = [41, 128, 185]; // Azul bancario
 
-        // --- ENCABEZADO ---
         doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
         doc.rect(0, 0, 210, 40, 'F');
 
@@ -58,18 +156,15 @@ const Transactions = () => {
         doc.setFontSize(10);
         doc.text(`Generado el: ${new Date().toLocaleString()}`, 105, 30, { align: 'center' });
 
-        // --- INFORMACIÓN PRINCIPAL ---
         doc.setTextColor(40, 40, 40);
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.text('Detalles de la Operación', 14, 50);
 
-        // Buscamos los nombres legibles en lugar de los IDs
         const cuentaNombre = getAccountName(data.account_id);
         const categoriaNombre = getCategoryName(data.category_id);
         const monedaSimbolo = getCurrencySymbol(data.currency_id);
 
-        // --- TABLA DE DATOS ---
         autoTable(doc, {
             startY: 55,
             theme: 'striped',
@@ -80,7 +175,6 @@ const Transactions = () => {
                 ['Tipo de Operación', data.transaction_type],
                 ['Categoría', categoriaNombre],
                 ['No. Referencia', data.reference_number || 'S/N'],
-                ['Beneficiario / Destino', data.beneficiary || 'N/A'],
                 ['Concepto', data.concept],
                 ['Fecha de Aplicación', new Date(data.transaction_date).toLocaleDateString()],
                 ['Estado', data.cancelled ? 'ANULADA' : 'COMPLETADA']
@@ -199,7 +293,12 @@ const Transactions = () => {
     };
 
     // Plantillas
-    const leftToolbarTemplate = () => <Button label="Nueva Transacción" icon="pi pi-plus" severity="success" onClick={openNew} />;
+    const leftToolbarTemplate = () => (
+        <div className="flex flex-wrap gap-2">
+            <Button label="Nueva Transacción" icon="pi pi-plus" severity="success" onClick={openNew} />
+            <Button label="Generar Reporte" icon="pi pi-file-export" severity="help" onClick={() => setReportDialog(true)} />
+        </div>
+    );
     const actionBodyTemplate = (rowData: any) => (
         <>
             <Button
@@ -243,19 +342,19 @@ const Transactions = () => {
     };
 
     const formatDate = (value: string) => {
-    if (!value) return "N/A";
+        if (!value) return 'N/A';
 
-    // Mantenemos la fecha original, pero forzamos a que se muestre en UTC
-    return new Date(value).toLocaleString('es-GT', {
-        timeZone: 'UTC', 
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false 
-    });
-};
+        // Mantenemos la fecha original, pero forzamos a que se muestre en UTC
+        return new Date(value).toLocaleString('es-GT', {
+            timeZone: 'UTC',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+    };
 
     return (
         <div className="card">
@@ -276,8 +375,6 @@ const Transactions = () => {
 
                 <Column field="transaction_date" header="Fecha" sortable />
                 <Column field="concept" header="Concepto" />
-                <Column field="beneficiary" header="Beneficiario / Destino" />
-
                 {/* COLUMNA MONTO (con el símbolo que ya arreglamos) */}
                 <Column
                     header="Monto"
@@ -365,11 +462,6 @@ const Transactions = () => {
                         <InputNumber value={transaction.amount} onValueChange={(e) => setTransaction({ ...transaction, amount: e.value })} mode="decimal" minFractionDigits={2} className="w-full" />
                     </div>
 
-                    <div className="field col-6">
-                        <label className="font-bold block mb-2">Beneficiario / Cuenta Destino</label>
-                        <InputText value={transaction.beneficiary} onChange={(e) => setTransaction({ ...transaction, beneficiary: e.target.value })} className="w-full" />
-                    </div>
-
                     <div className="field col-12">
                         <label className="font-bold block mb-2">No. Referencia</label>
                         <InputText value={transaction.reference_number} onChange={(e) => setTransaction({ ...transaction, reference_number: e.target.value })} className="w-full" />
@@ -403,6 +495,50 @@ const Transactions = () => {
                 <p>
                     ¿Seguro que desea anular la transacción <b>#{transaction.transaction_id}</b>?
                 </p>
+            </Dialog>
+
+            <Dialog
+                visible={reportDialog}
+                style={{ width: '450px' }}
+                header="Configurar Reporte"
+                modal
+                onHide={() => setReportDialog(false)}
+                footer={
+                    <>
+                        <Button label="Cancelar" icon="pi pi-times" text onClick={() => setReportDialog(false)} />
+                        <Button label="Descargar" icon="pi pi-download" onClick={exportReport} />
+                    </>
+                }
+            >
+                <div className="grid">
+                    <div className="field col-12">
+                        <label className="font-bold block mb-2">Fecha Inicio</label>
+                        <Calendar value={reportFilters.dateStart} onChange={(e) => setReportFilters({ ...reportFilters, dateStart: e.value })} dateFormat="yy-mm-dd" showIcon className="w-full" />
+                    </div>
+                    <div className="field col-12">
+                        <label className="font-bold block mb-2">Fecha Fin</label>
+                        <Calendar value={reportFilters.dateEnd} onChange={(e) => setReportFilters({ ...reportFilters, dateEnd: e.value })} dateFormat="yy-mm-dd" showIcon className="w-full" />
+                    </div>
+                    {/* CUENTA BANCARIA */}
+                    <div className="field col-12">
+                        <label className="font-bold block mb-2">Cuenta Bancaria</label>
+                        <Dropdown
+                            value={reportFilters.account}
+                            // Añadimos la opción "Todas" al vuelo
+                            options={[{ account_alias: 'Todas las cuentas', account_id: null }, ...accounts]}
+                            onChange={(e) => setReportFilters({ ...reportFilters, account: e.value })}
+                            optionLabel="account_alias"
+                            optionValue="account_id"
+                            placeholder="Seleccione una cuenta"
+                            className="w-full"
+                        />
+                    </div>
+
+                    <div className="field col-12">
+                        <label className="font-bold block mb-2">Formato de Archivo</label>
+                        <Dropdown value={reportFilters.format} options={exportFormats} onChange={(e) => setReportFilters({ ...reportFilters, format: e.value })} placeholder="Seleccione Formato" className="w-full" />
+                    </div>
+                </div>
             </Dialog>
         </div>
     );
