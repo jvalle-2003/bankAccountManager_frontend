@@ -12,6 +12,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { reconciliationsService } from '@/src/service/reconciliations.service';
 import { Reconciliation } from '@/types';
 import { usePermission } from '@/src/hooks/usePermission';
+import { BankAccountService } from '@/src/service/BankAccountService';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -19,12 +20,57 @@ import autoTable from 'jspdf-autotable';
 const ReconciliationsPage = () => {
     // Estados
     const [reconciliations, setReconciliations] = useState<Reconciliation[]>([]);
+    const [filteredReconciliations, setFilteredReconciliations] = useState<Reconciliation[]>([]);
     const [loading, setLoading] = useState(true);
     const [dialogVisible, setDialogVisible] = useState(false);
     const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
     const [selectedReconciliation, setSelectedReconciliation] = useState<Partial<Reconciliation>>({});
     const [isEditing, setIsEditing] = useState(false);
     const [globalFilter, setGlobalFilter] = useState('');
+    
+    // Estados para filtros
+    const [accounts, setAccounts] = useState<any[]>([]);
+    const [filterStatus, setFilterStatus] = useState<string>('');
+    const [filterYear, setFilterYear] = useState<string>('');
+    const [filterMonth, setFilterMonth] = useState<string>('');
+    const [filterAccount, setFilterAccount] = useState<string>('');
+    const [filterStartDate, setFilterStartDate] = useState<Date | null>(null);
+    const [filterEndDate, setFilterEndDate] = useState<Date | null>(null);
+    
+    // Opciones de años (últimos 5 años + futuro)
+    const yearOptions = () => {
+        const currentYear = new Date().getFullYear();
+        const years = [];
+        for (let i = currentYear - 2; i <= currentYear + 2; i++) {
+            years.push({ label: i.toString(), value: i.toString() });
+        }
+        return years;
+    };
+    
+    // Opciones de meses
+    const monthOptions = [
+        { label: 'Todos', value: '' },
+        { label: 'Enero', value: '1' },
+        { label: 'Febrero', value: '2' },
+        { label: 'Marzo', value: '3' },
+        { label: 'Abril', value: '4' },
+        { label: 'Mayo', value: '5' },
+        { label: 'Junio', value: '6' },
+        { label: 'Julio', value: '7' },
+        { label: 'Agosto', value: '8' },
+        { label: 'Septiembre', value: '9' },
+        { label: 'Octubre', value: '10' },
+        { label: 'Noviembre', value: '11' },
+        { label: 'Diciembre', value: '12' }
+    ];
+    
+    // Opciones de estado
+    const statusFilterOptions = [
+        { label: 'Todos', value: '' },
+        { label: 'En Proceso', value: 'IN_PROCESS' },
+        { label: 'Conciliado', value: 'RECONCILED' },
+        { label: 'Diferencias', value: 'DIFFERENCES' }
+    ];
     
     // HOOK DE PERMISOS
     const { hasPermission, loading: permissionLoading } = usePermission();
@@ -36,7 +82,7 @@ const ReconciliationsPage = () => {
     const canExport = hasPermission('EXPORTAR_CONCILIACIONES');
     const canExportCSV = hasPermission('EXPORTAR_CSV');
     
-    // Opciones para el dropdown de estado
+    // Opciones para el dropdown de estado (para el diálogo de edición)
     const statusOptions = [
         { label: 'En Proceso', value: 'IN_PROCESS' },
         { label: 'Conciliado', value: 'RECONCILED' },
@@ -48,14 +94,20 @@ const ReconciliationsPage = () => {
     useEffect(() => {
         if (canView) {
             loadReconciliations();
+            loadAccounts();
         }
     }, [canView]);
+
+    useEffect(() => {
+        applyFilters();
+    }, [reconciliations, filterStatus, filterYear, filterMonth, filterAccount, filterStartDate, filterEndDate]);
 
     const loadReconciliations = async () => {
         setLoading(true);
         try {
             const data = await reconciliationsService.getAll();
             setReconciliations(data);
+            setFilteredReconciliations(data);
         } catch (error) {
             toast.current?.show({ 
                 severity: 'error', 
@@ -67,11 +119,65 @@ const ReconciliationsPage = () => {
         }
     };
 
+    const loadAccounts = async () => {
+        try {
+            const data = await BankAccountService.getAccounts();
+            setAccounts(data);
+        } catch (error) {
+            console.error('Error cargando cuentas:', error);
+        }
+    };
+
+    const applyFilters = () => {
+        let filtered = [...reconciliations];
+        
+        // Filtro por Estado
+        if (filterStatus) {
+            filtered = filtered.filter(item => item.status === filterStatus);
+        }
+        
+        // Filtro por Año
+        if (filterYear) {
+            filtered = filtered.filter(item => item.year === parseInt(filterYear));
+        }
+        
+        // Filtro por Mes
+        if (filterMonth) {
+            filtered = filtered.filter(item => item.month === parseInt(filterMonth));
+        }
+        
+        // Filtro por Cuenta
+        if (filterAccount) {
+            filtered = filtered.filter(item => item.account_id === parseInt(filterAccount));
+        }
+        
+        // Filtro por Rango de Fechas (start_date)
+        if (filterStartDate) {
+            const startDateStr = filterStartDate.toISOString().split('T')[0];
+            filtered = filtered.filter(item => item.start_date >= startDateStr);
+        }
+        if (filterEndDate) {
+            const endDateStr = filterEndDate.toISOString().split('T')[0];
+            filtered = filtered.filter(item => item.end_date <= endDateStr);
+        }
+        
+        setFilteredReconciliations(filtered);
+    };
+
+    const clearFilters = () => {
+        setFilterStatus('');
+        setFilterYear('');
+        setFilterMonth('');
+        setFilterAccount('');
+        setFilterStartDate(null);
+        setFilterEndDate(null);
+    };
+
     // ==========================================
-    // EXPORTAR A EXCEL
+    // EXPORTAR A EXCEL (con datos filtrados)
     // ==========================================
     const exportToExcel = () => {
-        if (!reconciliations || reconciliations.length === 0) {
+        if (!filteredReconciliations || filteredReconciliations.length === 0) {
             toast.current?.show({ 
                 severity: 'warn', 
                 summary: 'Sin datos', 
@@ -80,7 +186,7 @@ const ReconciliationsPage = () => {
             return;
         }
 
-        const data = reconciliations.map(row => ({
+        const data = filteredReconciliations.map(row => ({
             'ID': row.reconciliation_id,
             'Cuenta ID': row.account_id,
             'Año': row.year,
@@ -109,10 +215,10 @@ const ReconciliationsPage = () => {
     };
 
     // ==========================================
-    // EXPORTAR A PDF
+    // EXPORTAR A PDF (con datos filtrados)
     // ==========================================
     const exportToPDF = () => {
-        if (!reconciliations || reconciliations.length === 0) {
+        if (!filteredReconciliations || filteredReconciliations.length === 0) {
             toast.current?.show({ 
                 severity: 'warn', 
                 summary: 'Sin datos', 
@@ -127,9 +233,21 @@ const ReconciliationsPage = () => {
         doc.text('Reporte de Conciliaciones Bancarias', 14, 22);
         doc.setFontSize(10);
         doc.text(`Generado: ${new Date().toLocaleString()}`, 14, 30);
-        doc.text(`Total de conciliaciones: ${reconciliations.length}`, 14, 37);
+        doc.text(`Total de conciliaciones: ${filteredReconciliations.length}`, 14, 37);
         
-        const tableData = reconciliations.map(row => [
+        // Mostrar filtros aplicados
+        let filtersText = 'Filtros: ';
+        if (filterStatus) filtersText += `Estado: ${statusFilterOptions.find(o => o.value === filterStatus)?.label} `;
+        if (filterYear) filtersText += `Año: ${filterYear} `;
+        if (filterMonth) filtersText += `Mes: ${monthOptions.find(o => o.value === filterMonth)?.label} `;
+        if (filterAccount && accounts.length > 0) {
+            const account = accounts.find(a => a.account_id === parseInt(filterAccount));
+            filtersText += `Cuenta: ${account?.account_number || filterAccount} `;
+        }
+        doc.setFontSize(8);
+        doc.text(filtersText, 14, 44);
+        
+        const tableData = filteredReconciliations.map(row => [
             row.reconciliation_id,
             row.account_id,
             row.year,
@@ -145,7 +263,7 @@ const ReconciliationsPage = () => {
         autoTable(doc, {
             head: [['ID', 'Cuenta', 'Año', 'Mes', 'Fecha Inicio', 'Fecha Fin', 'Estado', 'Saldo Banco', 'Saldo Libros', 'Diferencia']],
             body: tableData,
-            startY: 45,
+            startY: 50,
             theme: 'striped',
             headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
             alternateRowStyles: { fillColor: [240, 240, 240] },
@@ -163,10 +281,10 @@ const ReconciliationsPage = () => {
     };
 
     // ==========================================
-    // EXPORTAR A CSV
+    // EXPORTAR A CSV (con datos filtrados)
     // ==========================================
     const exportToCSV = () => {
-        if (!reconciliations || reconciliations.length === 0) {
+        if (!filteredReconciliations || filteredReconciliations.length === 0) {
             toast.current?.show({ 
                 severity: 'warn', 
                 summary: 'Sin datos', 
@@ -177,7 +295,7 @@ const ReconciliationsPage = () => {
 
         const headers = ['ID', 'Cuenta ID', 'Año', 'Mes', 'Mes Nombre', 'Fecha Inicio', 'Fecha Fin', 'Estado', 'Saldo Final Banco', 'Saldo Final Libros', 'Diferencia'];
         
-        const rows = reconciliations.map(row => [
+        const rows = filteredReconciliations.map(row => [
             row.reconciliation_id,
             row.account_id,
             row.year,
@@ -326,24 +444,104 @@ const ReconciliationsPage = () => {
         );
     };
 
+    // Panel de filtros
+    const filtersPanel = (
+        <div className="grid p-fluid mb-3" style={{ backgroundColor: '#f8f9fa', padding: '1rem', borderRadius: '8px' }}>
+            <div className="col-12 md:col-2">
+                <label className="font-bold">Estado</label>
+                <Dropdown 
+                    value={filterStatus} 
+                    options={statusFilterOptions} 
+                    onChange={(e) => setFilterStatus(e.value)} 
+                    placeholder="Todos"
+                    className="w-full"
+                />
+            </div>
+            <div className="col-12 md:col-2">
+                <label className="font-bold">Año</label>
+                <Dropdown 
+                    value={filterYear} 
+                    options={yearOptions()} 
+                    onChange={(e) => setFilterYear(e.value)} 
+                    placeholder="Todos"
+                    className="w-full"
+                />
+            </div>
+            <div className="col-12 md:col-2">
+                <label className="font-bold">Mes</label>
+                <Dropdown 
+                    value={filterMonth} 
+                    options={monthOptions} 
+                    onChange={(e) => setFilterMonth(e.value)} 
+                    placeholder="Todos"
+                    className="w-full"
+                />
+            </div>
+            <div className="col-12 md:col-3">
+                <label className="font-bold">Cuenta</label>
+                <Dropdown 
+                    value={filterAccount} 
+                    options={[
+                        { label: 'Todas las cuentas', value: '' },
+                        ...accounts.map(acc => ({ 
+                            label: `${acc.account_number} - ${acc.account_alias || 'Sin alias'}`, 
+                            value: acc.account_id.toString() 
+                        }))
+                    ]} 
+                    onChange={(e) => setFilterAccount(e.value)} 
+                    placeholder="Todas"
+                    className="w-full"
+                />
+            </div>
+            <div className="col-12 md:col-3">
+                <label className="font-bold">Fecha Desde</label>
+                <Calendar 
+                    value={filterStartDate} 
+                    onChange={(e) => setFilterStartDate(e.value as Date)} 
+                    dateFormat="yy-mm-dd"
+                    showIcon
+                    placeholder="dd/mm/yyyy"
+                    className="w-full"
+                />
+            </div>
+            <div className="col-12 md:col-3">
+                <label className="font-bold">Fecha Hasta</label>
+                <Calendar 
+                    value={filterEndDate} 
+                    onChange={(e) => setFilterEndDate(e.value as Date)} 
+                    dateFormat="yy-mm-dd"
+                    showIcon
+                    placeholder="dd/mm/yyyy"
+                    className="w-full"
+                />
+            </div>
+            <div className="col-12 md:col-2 flex align-items-end">
+                <Button label="Limpiar Filtros" icon="pi pi-filter-slash" severity="secondary" onClick={clearFilters} className="w-full" />
+            </div>
+        </div>
+    );
+
     const header = (
-        <div className="flex flex-wrap align-items-center justify-content-between gap-2">
-            <span className="text-xl text-900 font-bold">Conciliaciones</span>
-            <div className="flex gap-2">
-                {canCreate && <Button label="Nuevo" icon="pi pi-plus" severity="success" onClick={openNew} />}
-                {canExport && (
-                    <>
-                        <Button label="Exportar a Excel" icon="pi pi-file-excel" severity="info" onClick={exportToExcel} />
-                        <Button label="Exportar a PDF" icon="pi pi-file-pdf" severity="danger" onClick={exportToPDF} />
-                    </>
-                )}
-                {canExportCSV && (
-                    <Button label="Exportar a CSV" icon="pi pi-file" severity="secondary" onClick={exportToCSV} />
-                )}
-                <span className="p-input-icon-left">
-                    <i className="pi pi-search" />
-                    <InputText value={globalFilter} onChange={(e) => setGlobalFilter(e.target.value)} placeholder="Buscar..." />
-                </span>
+        <div>
+            {filtersPanel}
+            <div className="flex flex-wrap align-items-center justify-content-between gap-2">
+                <span className="text-xl text-900 font-bold">Conciliaciones</span>
+                <div className="flex gap-2">
+                    {canCreate && <Button label="Nuevo" icon="pi pi-plus" severity="success" onClick={openNew} />}
+                    {canExport && (
+                        <>
+                            <Button label="Exportar a Excel" icon="pi pi-file-excel" severity="info" onClick={exportToExcel} />
+                            <Button label="Exportar a PDF" icon="pi pi-file-pdf" severity="danger" onClick={exportToPDF} />
+                        </>
+                    )}
+                    {canExportCSV && (
+                        <Button label="Exportar a CSV" icon="pi pi-file" severity="secondary" onClick={exportToCSV} />
+                    )}
+                    <span className="p-input-icon-left">
+                        <i className="pi pi-search" />
+                        <InputText value={globalFilter} onChange={(e) => setGlobalFilter(e.target.value)} placeholder="Buscar..." />
+                    </span>
+                </div>
             </div>
         </div>
     );
@@ -382,7 +580,7 @@ const ReconciliationsPage = () => {
             <div className="col-12">
                 <div className="card">
                     <DataTable
-                        value={reconciliations}
+                        value={filteredReconciliations}
                         loading={loading}
                         header={header}
                         globalFilter={globalFilter}
@@ -408,6 +606,7 @@ const ReconciliationsPage = () => {
             </div>
 
             <Dialog visible={dialogVisible} style={{ width: '600px' }} header={isEditing ? "Editar Conciliación" : "Nueva Conciliación"} modal className="p-fluid" footer={dialogFooter} onHide={hideDialog}>
+                {/* El contenido del diálogo se mantiene igual */}
                 <div className="field">
                     <label htmlFor="account_id">ID de Cuenta *</label>
                     <InputNumber id="account_id" value={selectedReconciliation.account_id} onChange={(e) => setSelectedReconciliation({ ...selectedReconciliation, account_id: e.value || 0 })} required />
