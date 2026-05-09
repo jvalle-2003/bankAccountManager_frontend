@@ -1,6 +1,4 @@
 import axios from 'axios';
-
-// Es buena práctica definir la base y usarla según el recurso
 const BASE_URL = 'http://localhost:3001/api';
 const API_URL = `${BASE_URL}/users`;
 
