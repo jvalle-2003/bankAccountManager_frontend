@@ -39,7 +39,9 @@ const LoginPage = () => {
             });
             
             // ==========================================
-            // GUARDAR TOKEN Y DATOS DEL USUARIO (cambió aquí)
+
+            // GUARDAR TOKEN Y DATOS DEL USUARIO
+
             // ==========================================
             if (response.data.success && response.data.token) {
                 // Guardar token en localStorage
@@ -47,7 +49,7 @@ const LoginPage = () => {
                 // Guardar datos del usuario
                 localStorage.setItem('user', JSON.stringify(response.data.user));
                 
-                // Configurar token por defecto para axios (opcional)
+
                 axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
                 
                 // Redirigir al dashboard
@@ -75,7 +77,8 @@ const LoginPage = () => {
                 >
                     <div className="w-full surface-card py-8 px-5 sm:px-8" style={{ borderRadius: '53px' }}>
                         <div className="text-center mb-5">
-                            <img src={`/layout/images/logo-${layoutConfig.colorScheme === 'light' ? 'dark' : 'white'}.svg`} alt="Sakai logo" className="mb-5 w-6rem flex-shrink-0" />
+                            {/* 👇 LOGO ACTUALIZADO A hugo.png */}
+                            <img src="/layout/images/hugo.png" alt="GESBANCA logo" className="mb-5 w-6rem flex-shrink-0" />
                             <div className="text-900 text-3xl font-medium mb-3">Bienvenido</div>
                             <span className="text-600 font-medium">Inicia sesión en GESBANCA</span>
                         </div>
