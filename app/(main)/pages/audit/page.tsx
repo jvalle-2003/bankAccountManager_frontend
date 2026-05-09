@@ -1,14 +1,19 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Tag } from 'primereact/tag';
+import { Toast } from 'primereact/toast';
 import { auditService } from '../../../../src/service/audit.service'; 
+import { Button } from 'primereact/button';
+import { downloadFileFromBackend } from '../../../../src/utils/download.utils';
+import { Toolbar } from 'primereact/toolbar';
 
 const AuditPage = () => {
     const [audits, setAudits] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [expandedRows, setExpandedRows] = useState<any>(null);
+    const toast = useRef<Toast>(null);
 
     useEffect(() => {
         loadAudits();
@@ -24,6 +29,36 @@ const AuditPage = () => {
             setLoading(false);
         }
     };
+    const handleDownload = async (format: 'excel' | 'pdf' | 'csv') => {
+            try {
+                // URL específica para este módulo (usuarios)
+                const url = `http://localhost:3001/api/audits/report/export?format=${format}`;
+                
+                await downloadFileFromBackend(url, 'Reporte_Auditoria', format);
+                
+                toast.current?.show({ severity: 'success', summary: 'Éxito', detail: `Reporte en ${format.toUpperCase()} descargado`, life: 3000 });
+            } catch (error) {
+                toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo descargar el reporte', life: 3000 });
+            }
+        };
+
+    const leftToolbarTemplate = () => {
+    return (
+        <h5 className="m-0"> {/* m-0 quita el margen por defecto del h5 para centrarlo bien */}
+            <i className="pi pi-shield mr-2"></i>
+            Historial de Auditoría
+        </h5>
+    );
+};
+    const rightToolbarTemplate = () => {
+            return (
+                <div className="flex align-items-center justify-content-end gap-2">
+                    <Button type="button" icon="pi pi-file-excel" severity="success" rounded onClick={() => handleDownload('excel')} tooltip="Descargar Excel" tooltipOptions={{ position: 'bottom' }} />
+                    <Button type="button" icon="pi pi-file" severity="info" rounded onClick={() => handleDownload('csv')} tooltip="Descargar CSV" tooltipOptions={{ position: 'bottom' }} />
+                    <Button type="button" icon="pi pi-file-pdf" severity="warning" rounded onClick={() => handleDownload('pdf')} tooltip="Descargar PDF" tooltipOptions={{ position: 'bottom' }} />
+                </div>
+            );
+        };
 
     // Lógica para comparar JSONs y mostrar diferencias
     const rowExpansionTemplate = (data: any) => {
@@ -100,7 +135,9 @@ const AuditPage = () => {
         <div className="grid">
             <div className="col-12">
                 <div className="card shadow-2">
-                    <h5><i className="pi pi-shield mr-2"></i>Historial de Auditoría</h5>
+                    <Toast ref={toast} />
+                    <Toolbar className="mb-4" left={leftToolbarTemplate} right={rightToolbarTemplate} />
+                    
                     
                     <DataTable 
                         value={audits} 
