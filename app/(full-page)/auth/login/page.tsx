@@ -16,7 +16,7 @@ const LoginPage = () => {
     const [checked, setChecked] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    
+
     const { layoutConfig } = useContext(LayoutContext);
     const router = useRouter();
 
@@ -31,13 +31,13 @@ const LoginPage = () => {
 
         setLoading(true);
         setError('');
-        
+
         try {
             const response = await axios.post('http://localhost:3001/api/auth/login', {
                 username,
                 password
             });
-            
+
             // ==========================================
 
             // GUARDAR TOKEN Y DATOS DEL USUARIO
@@ -48,16 +48,14 @@ const LoginPage = () => {
                 localStorage.setItem('token', response.data.token);
                 // Guardar datos del usuario
                 localStorage.setItem('user', JSON.stringify(response.data.user));
-                
 
                 axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
-                
+
                 // Redirigir al dashboard
                 router.push('/pages/crud');
             } else {
                 setError('Respuesta inválida del servidor');
             }
-            
         } catch (error: any) {
             setError(error.response?.data?.message || 'Error al iniciar sesión');
         } finally {
@@ -87,34 +85,14 @@ const LoginPage = () => {
                             <label htmlFor="username" className="block text-900 text-xl font-medium mb-2">
                                 Usuario
                             </label>
-                            <InputText 
-                                id="username" 
-                                type="text" 
-                                placeholder="Nombre de Usuario" 
-                                className="w-full md:w-30rem mb-5" 
-                                style={{ padding: '1rem' }}
-                                value={username}
-                                onChange={(e) => setUsername(e.target.value)}
-                            />
+                            <InputText id="username" type="text" placeholder="Nombre de Usuario" className="w-full md:w-30rem mb-5" style={{ padding: '1rem' }} value={username} onChange={(e) => setUsername(e.target.value)} />
 
                             <label htmlFor="password1" className="block text-900 font-medium text-xl mb-2">
                                 Contraseña
                             </label>
-                            <Password 
-                                inputId="password1" 
-                                value={password} 
-                                onChange={(e) => setPassword(e.target.value)} 
-                                placeholder="Contraseña" 
-                                toggleMask 
-                                className="w-full mb-5" 
-                                inputClassName="w-full p-3 md:w-30rem"
-                            />
+                            <Password inputId="password1" value={password} onChange={(e) => setPassword(e.target.value)} feedback={false} placeholder="Contraseña" toggleMask className="w-full mb-5" inputClassName="w-full p-3 md:w-30rem" />
 
-                            {error && (
-                                <div style={{ color: 'red', marginBottom: '1rem', textAlign: 'center' }}>
-                                    {error}
-                                </div>
-                            )}
+                            {error && <div style={{ color: 'red', marginBottom: '1rem', textAlign: 'center' }}>{error}</div>}
 
                             <div className="flex align-items-center justify-content-between mb-5 gap-5">
                                 <div className="flex align-items-center">
@@ -125,13 +103,8 @@ const LoginPage = () => {
                                     Olvide mi contraseña?
                                 </a>
                             </div>
-                            
-                            <Button 
-                                label={loading ? "Cargando..." : "Iniciar Sesión"} 
-                                className="w-full p-3 text-xl" 
-                                onClick={handleLogin}
-                                disabled={loading}
-                            />
+
+                            <Button label={loading ? 'Cargando...' : 'Iniciar Sesión'} className="w-full p-3 text-xl" onClick={handleLogin} disabled={loading} />
                         </div>
                     </div>
                 </div>
