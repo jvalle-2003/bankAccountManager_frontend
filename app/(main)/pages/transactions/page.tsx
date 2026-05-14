@@ -141,10 +141,19 @@ const Transactions = () => {
     const getCategoryName = useCallback(
         (id: any): string => {
             const cat = categories.find((c) => c.category_id == id);
-            return cat ? `${cat.category_name} / ${cat.movement_type}` : 'Sin Categoría';
+            return cat ? `${cat.category_name} / ${getMovementLabel(cat.movement_type)}` : 'Sin Categoría';
         },
         [categories]
     );
+
+    const getMovementLabel = (value: string): string => {
+        const movementOptions = [
+            { label: 'Crédito', value: 'INGRESO' },
+            { label: 'Débito', value: 'EGRESO' }
+        ];
+        const found = movementOptions.find((o) => o.value === value);
+        return found ? found.label : value ?? '—';
+    };
 
     const getCurrencySymbol = useCallback((id: any): string => currencies.find((c) => c.id_currency == id)?.symbol ?? '', [currencies]);
 
@@ -397,25 +406,223 @@ const Transactions = () => {
 
     const exportReportPDF = (data: Transaction[]) => {
         const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+
+        // ── Datos reales de la cuenta ──
+        const selectedAccount = accounts.find((a) => a.account_id == reportFilters.account);
+        const accountAlias = selectedAccount?.account_alias ?? 'Todas las cuentas';
+        const accountNumber = selectedAccount?.account_number ?? '—';
+        const bankName = selectedAccount?.Bank?.bank_name ?? '—';
+        const accountType = selectedAccount?.AccountType?.type_name ?? '—';
+        const saldoInicial = Number(selectedAccount?.initial_balance ?? 0);
+        const saldoActual = Number(selectedAccount?.current_balance ?? 0);
+        const currencySymbol = getCurrencySymbol(selectedAccount?.currency_id ?? data[0]?.currency_id);
+
+        // ── Período ──
+        const dateStartLabel = reportFilters.dateStart ? new Date(reportFilters.dateStart).toLocaleDateString('es-GT', { timeZone: 'UTC', year: 'numeric', month: 'long' }).toUpperCase() : '—';
+
+        // ── Clasificación crédito/débito por movement_type ──
+        const credits = data.filter((t) => {
+            const cat = categories.find((c) => c.category_id == t.category_id);
+            return !t.cancelled && cat?.movement_type?.toUpperCase() === 'INGRESO';
+        });
+        const debits = data.filter((t) => {
+            const cat = categories.find((c) => c.category_id == t.category_id);
+            return !t.cancelled && cat?.movement_type?.toUpperCase() !== 'INGRESO';
+        });
+        const totalCredits = credits.reduce((s, t) => s + Number(t.amount), 0);
+        const totalDebits = debits.reduce((s, t) => s + Number(t.amount), 0);
+        const saldoFinal = saldoInicial + totalCredits - totalDebits;
+        const saldoPromedio = data.length > 0 ? data.reduce((s, t) => s + Number(t.amount), 0) / data.length : 0;
+
+        // ══════════════════════════════════════════════
+        // ENCABEZADO
+        // ══════════════════════════════════════════════
+        doc.setFillColor(...PRIMARY_COLOR);
+        doc.rect(0, 0, pageWidth, 35, 'F');
+
+        // Logo (triángulo rojo)
+        doc.setFillColor(220, 50, 50);
+        doc.triangle(pageWidth - 25, 5, pageWidth - 5, 5, pageWidth - 5, 25, 'F');
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
         doc.setFontSize(16);
-        doc.setTextColor(...PRIMARY_COLOR);
-        doc.text('Reporte de Transacciones', 105, 15, { align: 'center' });
+        doc.text('ESTADO DE CUENTA', 10, 14);
+        doc.setFontSize(13);
+        doc.text(accountType.toUpperCase(), 10, 22);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.text(bankName, 10, 30);
+        doc.text('Página 1', pageWidth - 30, 30);
+
+        // ── Recuadro datos del titular ──
+        let y = 42;
+        doc.setDrawColor(180, 180, 180);
+        doc.setLineWidth(0.3);
+        doc.rect(10, y, 130, 22);
+        doc.setTextColor(40, 40, 40);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text(accountAlias.toUpperCase(), 13, y + 7);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Cuenta No.:   ${accountNumber}`, 13, y + 13);
+        doc.text(`Moneda:        ${currencySymbol === 'Q' ? 'QUETZAL' : currencySymbol}`, 13, y + 19);
+
+        // ── Período ──
+        y = 70;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.setTextColor(40, 40, 40);
+        doc.text(`- ${dateStartLabel} -`, pageWidth / 2, y, { align: 'center' });
+
+        // ══════════════════════════════════════════════
+        // RESUMEN DE MOVIMIENTOS
+        // ══════════════════════════════════════════════
+        y = 76;
+        doc.setFillColor(220, 230, 241);
+        doc.rect(10, y, pageWidth - 20, 7, 'F');
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text('RESUMEN DE MOVIMIENTOS', pageWidth / 2, y + 5, { align: 'center' });
+
+        y = 87;
+        doc.setFontSize(8.5);
+
+        // Fila 1
+        doc.setFont('helvetica', 'bold');
+        doc.text('Saldo inicial:', 12, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${currencySymbol} ${saldoInicial.toFixed(2)}`, 50, y);
+
+        doc.setFont('helvetica', 'bold');
+        doc.text('Saldo final:', 75, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${currencySymbol} ${saldoFinal.toFixed(2)}`, 110, y);
+
+        doc.setFont('helvetica', 'bold');
+        doc.text('Mes:', 148, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(dateStartLabel, 158, y);
+
+        // Fila 2
+        y += 7;
+        doc.setFont('helvetica', 'bold');
+        doc.text('No. de Créditos:', 12, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${credits.length}`, 50, y);
+
+        doc.setFont('helvetica', 'bold');
+        doc.text('No. débitos:', 75, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${debits.length}`, 110, y);
+
+        doc.setFont('helvetica', 'bold');
+        doc.text('Saldo Promedio:', 148, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${currencySymbol} ${saldoPromedio.toFixed(2)}`, pageWidth - 12, y, { align: 'right' });
+
+        // Fila 3
+        y += 7;
+        doc.setFont('helvetica', 'bold');
+        doc.text('Valor Créditos:', 12, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${currencySymbol} ${totalCredits.toFixed(2)}`, 50, y);
+
+        doc.setFont('helvetica', 'bold');
+        doc.text('Valor débitos:', 75, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${currencySymbol} ${totalDebits.toFixed(2)}`, 110, y);
+
+        doc.setFont('helvetica', 'bold');
+        doc.text('Saldo Actual:', 148, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${currencySymbol} ${saldoActual.toFixed(2)}`, pageWidth - 12, y, { align: 'right' });
+
+        // Separador
+        y += 5;
+        doc.setDrawColor(180, 180, 180);
+        doc.line(10, y, pageWidth - 10, y);
+
+        // ══════════════════════════════════════════════
+        // DETALLE
+        // ══════════════════════════════════════════════
+        y += 4;
+        doc.setFillColor(220, 230, 241);
+        doc.rect(10, y, pageWidth - 20, 7, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text('DETALLE', pageWidth / 2, y + 5, { align: 'center' });
+        y += 9;
+
+        // Saldo inicial como primera fila
+        const primeraFila = ['', '', '', 'Saldo Anterior', '', '', `${currencySymbol} ${saldoInicial.toFixed(2)}`];
+
+        let saldoAcumulado = saldoInicial;
+        const tableRows = data.map((t) => {
+            const cat = categories.find((c) => c.category_id == t.category_id);
+            const isCredit = cat?.movement_type?.toUpperCase() === 'INGRESO';
+            const amount = Number(t.amount);
+            const fecha = new Date(t.transaction_date).toLocaleDateString('es-GT', { timeZone: 'UTC', day: '2-digit' });
+
+            let debito = '';
+            let credito = '';
+
+            if (t.cancelled) {
+                debito = '(Anulada)';
+            } else if (isCredit) {
+                saldoAcumulado += amount;
+                credito = amount.toFixed(2);
+            } else {
+                saldoAcumulado -= amount;
+                debito = amount.toFixed(2);
+            }
+
+            return [fecha, getAccountName(t.account_id), t.reference_number ?? '—', t.concept, debito, credito, t.cancelled ? '—' : `${currencySymbol} ${saldoAcumulado.toFixed(2)}`];
+        });
 
         autoTable(doc, {
-            head: [['ID', 'Cuenta', 'Tipo', 'Fecha', 'Monto', 'Estado']],
-            body: data.map((t: any) => [
-                t.transaction_id,
-                getAccountName(t.account_id),
-                t.transaction_type,
-                new Date(t.transaction_date).toLocaleDateString('es-GT', { timeZone: 'UTC' }),
-                `${getCurrencySymbol(t.currency_id)} ${Number(t.amount).toFixed(2)}`,
-                t.cancelled ? 'Cancelada' : 'Activa'
-            ]),
-            theme: 'grid',
-            headStyles: { fillColor: PRIMARY_COLOR },
-            startY: 25
+            startY: y,
+            head: [['DÍA', 'AGENCIA', 'DOCTO.', 'DESCRIPCIÓN', 'DÉBITO', 'CRÉDITO', 'SALDO']],
+            body: [primeraFila, ...tableRows],
+            theme: 'plain',
+            headStyles: {
+                fillColor: PRIMARY_COLOR,
+                textColor: 255,
+                fontStyle: 'bold',
+                fontSize: 8,
+                halign: 'center'
+            },
+            columnStyles: {
+                0: { halign: 'center', cellWidth: 12 },
+                1: { cellWidth: 30 },
+                2: { halign: 'center', cellWidth: 20 },
+                3: { cellWidth: 58 },
+                4: { halign: 'right', cellWidth: 22, textColor: [180, 30, 30] },
+                5: { halign: 'right', cellWidth: 22, textColor: [30, 130, 60] },
+                6: { halign: 'right', cellWidth: 26, fontStyle: 'bold' }
+            },
+            styles: { fontSize: 7.5, cellPadding: 2 },
+            alternateRowStyles: { fillColor: [245, 248, 252] },
+            didParseCell: (hookData) => {
+                // "Saldo Anterior" en negrita
+                if (hookData.section === 'body' && hookData.row.index === 0) {
+                    hookData.cell.styles.fontStyle = 'bold';
+                }
+            }
         });
-        doc.save('Reporte_Transacciones.pdf');
+
+        // ── Pie de página ──
+        const pageCount = (doc as any).internal.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            doc.setFontSize(7.5);
+            doc.setTextColor(150, 150, 150);
+            doc.setFont('helvetica', 'normal');
+            doc.text('Este documento es un estado de cuenta oficial. Generado electrónicamente — no requiere firma.', pageWidth / 2, 290, { align: 'center' });
+        }
+
+        doc.save(`Estado_Cuenta_${accountAlias.replace(/\s+/g, '_')}.pdf`);
     };
 
     const exportExcelCSV = (data: Transaction[], format: string) => {
@@ -440,7 +647,7 @@ const Transactions = () => {
         <div className="flex flex-wrap gap-2">
             <Button label="Nueva Transacción" icon="pi pi-plus" severity="success" onClick={openNew} />
             <Button
-                label="Generar Reporte"
+                label="Generar Estado de Cuenta"
                 icon="pi pi-file-export"
                 severity="help"
                 onClick={() => {
@@ -454,9 +661,9 @@ const Transactions = () => {
 
     const actionBodyTemplate = (rowData: Transaction) => (
         <div className="flex gap-1">
-            <Button icon="pi pi-file-pdf" rounded severity="info" tooltip="Descargar comprobante" tooltipOptions={{ position: 'top' }} onClick={() => generatePDF(rowData)} />
-            <Button icon="pi pi-pencil" rounded severity="success" tooltip="Editar" tooltipOptions={{ position: 'top' }} onClick={() => openEdit(rowData)} disabled={!!rowData.cancelled} />
-            {!rowData.cancelled && <Button icon="pi pi-ban" rounded severity="danger" tooltip="Anular" tooltipOptions={{ position: 'top' }} onClick={() => confirmCancel(rowData)} />}
+            <Button icon="pi pi-file-pdf" rounded text severity="info" tooltip="Descargar comprobante" tooltipOptions={{ position: 'top' }} onClick={() => generatePDF(rowData)} />
+            <Button icon="pi pi-pencil" rounded text severity="success" tooltip="Editar" tooltipOptions={{ position: 'top' }} onClick={() => openEdit(rowData)} disabled={!!rowData.cancelled} />
+            {!rowData.cancelled && <Button icon="pi pi-ban" rounded text severity="danger" tooltip="Anular" tooltipOptions={{ position: 'top' }} onClick={() => confirmCancel(rowData)} />}
         </div>
     );
 
@@ -735,11 +942,11 @@ const Transactions = () => {
                         <label className="font-bold block mb-2">Cuenta Bancaria</label>
                         <Dropdown
                             value={reportFilters.account}
-                            options={[{ account_alias: 'Todas las cuentas', account_id: null }, ...accounts]}
+                            options={[...accounts]}
                             onChange={(e) => setReportFilters({ ...reportFilters, account: e.value })}
                             optionLabel="account_alias"
                             optionValue="account_id"
-                            placeholder="Todas las cuentas"
+                            placeholder="Seleccione una cuenta"
                             className="w-full"
                         />
                     </div>

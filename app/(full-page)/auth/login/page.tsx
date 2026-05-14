@@ -52,7 +52,7 @@ const LoginPage = () => {
                 axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
 
                 // Redirigir al dashboard
-                router.push('/pages/crud');
+                router.push('/pages/dashboard');
             } else {
                 setError('Respuesta inválida del servidor');
             }
