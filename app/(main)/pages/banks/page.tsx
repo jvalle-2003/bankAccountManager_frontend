@@ -1,4 +1,5 @@
 'use client';
+
 import { Button } from 'primereact/button';
 import { Column } from 'primereact/column';
 import { DataTable } from 'primereact/datatable';
@@ -6,6 +7,7 @@ import { Dialog } from 'primereact/dialog';
 import { InputText } from 'primereact/inputtext';
 import { Toast } from 'primereact/toast';
 import { Toolbar } from 'primereact/toolbar';
+import { classNames } from 'primereact/utils';
 import React, { useEffect, useRef, useState } from 'react';
 import { BankAccountService } from '@/src/service/BankAccountService';
 
@@ -21,9 +23,9 @@ const BanksPage = () => {
     const [bank, setBank] = useState<any>(emptyBank);
     const [bankDialog, setBankDialog] = useState(false);
     const [deleteBankDialog, setDeleteBankDialog] = useState(false);
+    const [submitted, setSubmitted] = useState(false); // Rastreo de envío para validación visual
     const toast = useRef<Toast>(null);
 
-    // Carga inicial siguiendo tu ejemplo de BankAccounts
     useEffect(() => { 
         loadBanks(); 
     }, []);
@@ -37,13 +39,58 @@ const BanksPage = () => {
         }
     };
 
-    const saveBank = async () => {
-        try {
-            if (!bank.bank_name || !bank.bank_name.trim() || !bank.swift_code || !bank.swift_code.trim()) {
-                toast.current?.show({ severity: 'warn', summary: 'Atención', detail: 'Complete el nombre y el código SWIFT' });
-                return;
-            }
+    // ==========================================
+    // VALIDACIÓN DE ENTRADA (SOLO LETRAS/SÍMBOLOS)
+    // ==========================================
+    const onNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        const regex = /^[^0-9]*$/; // Bloquea números
 
+        if (regex.test(val)) {
+            setBank({ ...bank, bank_name: val });
+        } else {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Formato inválido',
+                detail: 'El nombre del banco no debe contener números',
+                life: 2000
+            });
+        }
+    };
+
+    const saveBank = async () => {
+        setSubmitted(true);
+
+        // 1. VALIDACIÓN: CAMPOS OBLIGATORIOS
+        const isNameEmpty = !bank.bank_name || !bank.bank_name.trim();
+        const isSwiftEmpty = !bank.swift_code || !bank.swift_code.trim();
+
+        if (isNameEmpty || isSwiftEmpty) {
+            toast.current?.show({ 
+                severity: 'error', 
+                summary: 'Atención', 
+                detail: 'El nombre y el código SWIFT son requeridos' 
+            });
+            return;
+        }
+
+        // 2. VALIDACIÓN: DUPLICADOS (Ignora mayúsculas y espacios)
+        const isDuplicate = banks.some(b => 
+            b.bank_name.toLowerCase().trim() === bank.bank_name.toLowerCase().trim() && 
+            b.bank_id !== bank.bank_id
+        );
+
+        if (isDuplicate) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Registro Duplicado',
+                detail: `El banco "${bank.bank_name}" ya se encuentra registrado.`,
+                life: 4000
+            });
+            return;
+        }
+
+        try {
             if (bank.bank_id) {
                 await BankAccountService.updateBank(bank.bank_id, bank);
                 toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Banco Actualizado' });
@@ -53,22 +100,20 @@ const BanksPage = () => {
             }
             
             setBankDialog(false);
+            setSubmitted(false);
             setBank(emptyBank);
-            loadBanks(); // Recarga la tabla para reflejar cambios
+            loadBanks(); 
         } catch (e) {
-            toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo guardar el registro' });
+            toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al procesar la solicitud en la base de datos' });
         }
     };
 
     const confirmDelete = async () => {
         try {
-            // Asegúrate de que el backend ejecute un DELETE físico aquí
             await BankAccountService.deleteBank(bank.bank_id);
-            
             setDeleteBankDialog(false);
             setBank(emptyBank);
-            loadBanks(); // IMPORTANTE: Recarga la tabla después de borrar
-            
+            loadBanks();
             toast.current?.show({ severity: 'success', summary: 'Eliminado', detail: 'Registro eliminado permanentemente' });
         } catch (e) {
             toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al eliminar (Verifique dependencias)' });
@@ -77,7 +122,7 @@ const BanksPage = () => {
 
     const actionBody = (rowData: any) => (
         <div className="flex gap-2">
-            <Button icon="pi pi-pencil" rounded severity="success" onClick={() => { setBank(rowData); setBankDialog(true); }} />
+            <Button icon="pi pi-pencil" rounded severity="success" onClick={() => { setSubmitted(false); setBank(rowData); setBankDialog(true); }} />
             <Button icon="pi pi-trash" rounded severity="danger" onClick={() => { setBank(rowData); setDeleteBankDialog(true); }} />
         </div>
     );
@@ -87,10 +132,10 @@ const BanksPage = () => {
             <Toast ref={toast} />
             
             <Toolbar className="mb-4" left={() => (
-                <Button label="Nuevo Banco" icon="pi pi-plus" severity="success" onClick={() => { setBank(emptyBank); setBankDialog(true); }} />
+                <Button label="Nuevo Banco" icon="pi pi-plus" severity="success" onClick={() => { setSubmitted(false); setBank(emptyBank); setBankDialog(true); }} />
             )} />
 
-            <DataTable value={banks} paginator rows={10} responsiveLayout="scroll" emptyMessage="No hay bancos registrados.">
+            <DataTable value={banks} paginator rows={10} responsiveLayout="scroll" emptyMessage="No hay bancos registrados en el sistema local.">
                 <Column field="bank_id" header="ID" sortable style={{ width: '10%' }} />
                 <Column field="bank_name" header="Nombre del Banco" sortable style={{ width: '40%' }} />
                 <Column field="swift_code" header="Código SWIFT" sortable style={{ width: '25%' }} />
@@ -98,17 +143,46 @@ const BanksPage = () => {
             </DataTable>
 
             {/* Diálogo de Gestión */}
-            <Dialog visible={bankDialog} style={{ width: '450px' }} header="Gestión de Banco" modal className="p-fluid" onHide={() => setBankDialog(false)}
-                footer={<><Button label="Cancelar" icon="pi pi-times" text onClick={() => setBankDialog(false)} /><Button label="Guardar" icon="pi pi-check" onClick={saveBank} /></>}>
+            <Dialog 
+                visible={bankDialog} 
+                style={{ width: '450px' }} 
+                header="Gestión de Banco" 
+                modal 
+                className="p-fluid" 
+                onHide={() => setBankDialog(false)}
+                footer={
+                    <>
+                        <Button label="Cancelar" icon="pi pi-times" text onClick={() => setBankDialog(false)} />
+                        <Button label="Guardar" icon="pi pi-check" onClick={saveBank} />
+                    </>
+                }
+            >
                 
                 <div className="field">
                     <label htmlFor="bank_name" className="font-bold">Nombre del Banco</label>
-                    <InputText id="bank_name" value={bank.bank_name} onChange={(e) => setBank({...bank, bank_name: e.target.value})} placeholder="Ej: Banco Industrial" required autoFocus />
+                    <InputText 
+                        id="bank_name" 
+                        value={bank.bank_name} 
+                        onChange={onNameChange} 
+                        placeholder="Ej: Banco Industrial" 
+                        required 
+                        autoFocus 
+                        className={classNames({ 'p-invalid': submitted && (!bank.bank_name || !bank.bank_name.trim()) })}
+                    />
+                    {submitted && (!bank.bank_name || !bank.bank_name.trim()) && <small className="p-error">El nombre es obligatorio.</small>}
                 </div>
 
                 <div className="field mt-3">
                     <label htmlFor="swift_code" className="font-bold">Código SWIFT</label>
-                    <InputText id="swift_code" value={bank.swift_code || ''} onChange={(e) => setBank({...bank, swift_code: e.target.value})} placeholder="Ej: INDIGTGC" required />
+                    <InputText 
+                        id="swift_code" 
+                        value={bank.swift_code || ''} 
+                        onChange={(e) => setBank({...bank, swift_code: e.target.value})} 
+                        placeholder="Ej: INDIGTGC" 
+                        required 
+                        className={classNames({ 'p-invalid': submitted && (!bank.swift_code || !bank.swift_code.trim()) })}
+                    />
+                    {submitted && (!bank.swift_code || !bank.swift_code.trim()) && <small className="p-error">El código SWIFT es obligatorio.</small>}
                 </div>
             </Dialog>
 
