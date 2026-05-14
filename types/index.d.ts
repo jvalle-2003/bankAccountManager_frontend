@@ -62,7 +62,7 @@ export interface Permission {
 export type {
     // ... todos los que ya tenías ...
     Permission,
-    Period  // 👈 AGREGAR ESTE
+    Period // 👈 AGREGAR ESTE
 };
 
 export type {
@@ -95,7 +95,7 @@ export type {
     AppMailReplyProps,
     AppMailProps,
     AppMenuItem,
-    Permission  // 👈 AGREGADO: Exportamos el tipo Permission
+    Permission // 👈 AGREGADO: Exportamos el tipo Permission
 };
 
 // ============= TIPOS AGREGADOS =============
@@ -120,7 +120,7 @@ export type {
     // ... todos los que ya tenías ...
     Permission,
     Period,
-    Reconciliation  // 👈 AGREGAR ESTE
+    Reconciliation // 👈 AGREGAR ESTE
 };
 
 // ============= TIPOS AGREGADOS =============
@@ -136,9 +136,8 @@ export type {
     Permission,
     Period,
     Reconciliation,
-    RolePermission  // 👈 AGREGAR ESTE
+    RolePermission // 👈 AGREGAR ESTE
 };
-
 
 // ============= TIPOS AGREGADOS =============
 export interface BalanceHistory {
@@ -155,7 +154,7 @@ export type {
     Period,
     Reconciliation,
     RolePermission,
-    BalanceHistory  // 👈 AGREGAR ESTE
+    BalanceHistory // 👈 AGREGAR ESTE
 };
 
 // ============= TIPOS AGREGADOS =============
@@ -173,7 +172,7 @@ export type {
     Reconciliation,
     RolePermission,
     BalanceHistory,
-    Role  // 👈 AGREGAR ESTE
+    Role // 👈 AGREGAR ESTE
 };
 
 // ============= TIPOS AGREGADOS =============
@@ -198,7 +197,7 @@ export type {
     RolePermission,
     BalanceHistory,
     Role,
-    User  // 👈 AGREGAR ESTE
+    User // 👈 AGREGAR ESTE
 };
 
 // ============= TIPOS AGREGADOS =============
@@ -212,6 +211,25 @@ export interface Audit {
 }
 // ============================================
 
+// src/types/index.ts
+
+export interface BalanceHistory {
+    history_id: number;
+    account_id: number;
+    balance_date: string; // Fecha del saldo (ej: 2024-07-31)
+    closing_balance: number; // Saldo de cierre
+    year?: number; // Año del cierre
+    month?: number; // Mes del cierre (1-12)
+    is_monthly_closing?: boolean; // Si es un cierre de mes oficial
+    previous_balance?: number; // Saldo del mes anterior
+    monthly_credits?: number; // Total de ingresos del mes
+    monthly_debits?: number; // Total de egresos del mes
+    transaction_count?: number; // Número de transacciones
+    closed_by?: number | null; // ID del usuario que cerró
+    closed_at?: string; // Fecha/hora del cierre
+    notes?: string; // Observaciones
+}
+
 export type {
     // ... todos los que ya tenías ...
     Permission,
@@ -221,5 +239,5 @@ export type {
     BalanceHistory,
     Role,
     User,
-    Audit  // 👈 AGREGAR ESTE
+    Audit // 👈 AGREGAR ESTE
 };

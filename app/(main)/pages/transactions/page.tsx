@@ -16,10 +16,12 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 
+import { BalanceHistory } from '@/types';
 import { TransactionService } from '../../../../src/service/transaction.service';
 import { BankAccountService } from '../../../../src/service/BankAccountService';
 import { CategoryService } from '../../../../src/service/category.service';
 import { CurrencyService } from '../../../../src/service/currency.service';
+import { balanceHistoryService } from '../../../../src/service/balanceHistory.service';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -37,11 +39,24 @@ interface Transaction {
     cancelled?: boolean;
 }
 
-interface ReportFilters {
-    dateStart: Date | null;
-    dateEnd: Date | null;
-    account: number | null;
-    format: 'pdf' | 'xlsx' | 'csv';
+interface MonthYearFilter {
+    month: number;
+    year: number;
+}
+
+interface MonthlyClosingData {
+    history_id: number;
+    account_id: number;
+    balance_date: string;
+    closing_balance: number;
+    year: number;
+    month: number;
+    previous_balance: number;
+    monthly_credits: number;
+    monthly_debits: number;
+    transaction_count: number;
+    closed_at: string;
+    closed_by: number | null;
 }
 
 interface ValidationErrors {
@@ -69,13 +84,6 @@ const EMPTY_TRANSACTION: Transaction = {
     beneficiary: null
 };
 
-const EMPTY_REPORT_FILTERS: ReportFilters = {
-    dateStart: null,
-    dateEnd: null,
-    account: null,
-    format: 'pdf'
-};
-
 const TRANSACTION_TYPES = [
     { label: 'Operaciones con Tarjetas', value: 'Operaciones con Tarjetas' },
     { label: 'Depósitos y Pagos', value: 'Depósitos y Pagos' },
@@ -83,13 +91,21 @@ const TRANSACTION_TYPES = [
     { label: 'Transferencias de Fondos', value: 'Transferencias de Fondos' }
 ];
 
-const EXPORT_FORMATS = [
-    { label: 'PDF', value: 'pdf' },
-    { label: 'Excel', value: 'xlsx' },
-    { label: 'CSV', value: 'csv' }
-];
-
 const PRIMARY_COLOR: [number, number, number] = [41, 128, 185];
+const MONTHS = [
+    { label: 'Enero', value: 1 },
+    { label: 'Febrero', value: 2 },
+    { label: 'Marzo', value: 3 },
+    { label: 'Abril', value: 4 },
+    { label: 'Mayo', value: 5 },
+    { label: 'Junio', value: 6 },
+    { label: 'Julio', value: 7 },
+    { label: 'Agosto', value: 8 },
+    { label: 'Septiembre', value: 9 },
+    { label: 'Octubre', value: 10 },
+    { label: 'Noviembre', value: 11 },
+    { label: 'Diciembre', value: 12 }
+];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -112,6 +128,10 @@ const today = (): Date => {
     return d;
 };
 
+const getMonthName = (month: number): string => {
+    return MONTHS.find((m) => m.value === month)?.label || '';
+};
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 const Transactions = () => {
@@ -119,6 +139,7 @@ const Transactions = () => {
     const [accounts, setAccounts] = useState<any[]>([]);
     const [categories, setCategories] = useState<any[]>([]);
     const [currencies, setCurrencies] = useState<any[]>([]);
+    const [monthlyClosings, setMonthlyClosings] = useState<MonthlyClosingData[]>([]);
 
     const [transaction, setTransaction] = useState<Transaction>(EMPTY_TRANSACTION);
     const [errors, setErrors] = useState<ValidationErrors>({});
@@ -126,11 +147,22 @@ const Transactions = () => {
     const [transactionDialog, setTransactionDialog] = useState(false);
     const [cancelDialog, setCancelDialog] = useState(false);
     const [reportDialog, setReportDialog] = useState(false);
-    const [reportFilters, setReportFilters] = useState<ReportFilters>(EMPTY_REPORT_FILTERS);
-    const [reportErrors, setReportErrors] = useState<{ dateEnd?: string }>({});
+    const [closingDialog, setClosingDialog] = useState(false);
+    const [historyDialog, setHistoryDialog] = useState(false);
+
+    const [selectedAccount, setSelectedAccount] = useState<number | null>(null);
+    const [closingMonth, setClosingMonth] = useState<MonthYearFilter>({
+        month: new Date().getMonth() + 1,
+        year: new Date().getFullYear()
+    });
+    const [statementMonth, setStatementMonth] = useState<MonthYearFilter>({
+        month: new Date().getMonth() + 1,
+        year: new Date().getFullYear()
+    });
 
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [closingLoading, setClosingLoading] = useState(false);
 
     const toast = useRef<Toast>(null);
 
@@ -155,7 +187,7 @@ const Transactions = () => {
         return found ? found.label : value ?? '—';
     };
 
-    const getCurrencySymbol = useCallback((id: any): string => currencies.find((c) => c.id_currency == id)?.symbol ?? '', [currencies]);
+    const getCurrencySymbol = useCallback((id: any): string => currencies.find((c) => c.id_currency == id)?.symbol ?? 'Q', [currencies]);
 
     // ── Data Loading ─────────────────────────────────────────────────────────
 
@@ -168,6 +200,30 @@ const Transactions = () => {
             toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar las transacciones', life: 3000 });
         } finally {
             setLoading(false);
+        }
+    }, []);
+
+    const loadMonthlyClosings = useCallback(async (accountId?: number) => {
+        if (!accountId) return;
+        try {
+            const history = await balanceHistoryService.getClosingHistory(accountId, 12);
+            const mappedData: MonthlyClosingData[] = history.map((item: BalanceHistory) => ({
+                history_id: item.history_id,
+                account_id: item.account_id,
+                balance_date: item.balance_date,
+                closing_balance: item.closing_balance,
+                year: item.year || 0,
+                month: item.month || 0,
+                previous_balance: item.previous_balance || 0,
+                monthly_credits: item.monthly_credits || 0,
+                monthly_debits: item.monthly_debits || 0,
+                transaction_count: item.transaction_count || 0,
+                closed_at: item.closed_at || '',
+                closed_by: item.closed_by || null
+            }));
+            setMonthlyClosings(mappedData);
+        } catch (error) {
+            console.error('Error cargando cierres:', error);
         }
     }, []);
 
@@ -229,14 +285,6 @@ const Transactions = () => {
         return errs;
     };
 
-    const validateReportFilters = (f: ReportFilters): { dateEnd?: string } => {
-        const errs: { dateEnd?: string } = {};
-        if (f.dateStart && f.dateEnd && f.dateEnd < f.dateStart) {
-            errs.dateEnd = 'La fecha fin no puede ser anterior a la fecha inicio.';
-        }
-        return errs;
-    };
-
     // ── CRUD ─────────────────────────────────────────────────────────────────
 
     const openNew = () => {
@@ -253,7 +301,6 @@ const Transactions = () => {
 
     const handleFieldChange = <K extends keyof Transaction>(field: K, value: Transaction[K]) => {
         setTransaction((prev) => ({ ...prev, [field]: value }));
-        // Clear individual field error on change
         if (errors[field as keyof ValidationErrors]) {
             setErrors((prev) => ({ ...prev, [field]: undefined }));
         }
@@ -304,12 +351,267 @@ const Transactions = () => {
         }
     };
 
-    // ── PDF Generation ────────────────────────────────────────────────────────
+    // ── CIERRE DE MES ─────────────────────────────────────────────────────────
+
+    const executeMonthlyClosing = async () => {
+        if (!selectedAccount) return;
+
+        setClosingLoading(true);
+        try {
+            const result = await balanceHistoryService.calculateMonthlyClosing({
+                account_id: selectedAccount,
+                year: closingMonth.year,
+                month: closingMonth.month,
+                closed_by: 1
+            });
+
+            if (result.success) {
+                toast.current?.show({
+                    severity: 'success',
+                    summary: 'Cierre completado',
+                    detail: result.message,
+                    life: 3000
+                });
+                setClosingDialog(false);
+                await loadMonthlyClosings(selectedAccount);
+            } else {
+                throw new Error(result.message);
+            }
+        } catch (error: any) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Error',
+                detail: error.response?.data?.message || error.message,
+                life: 3000
+            });
+        } finally {
+            setClosingLoading(false);
+        }
+    };
+
+    // ── REPORTE CON CIERRE DE MES ─────────────────────────────────────────────
+
+    const generateMonthlyStatement = async () => {
+        if (!selectedAccount) return;
+
+        setLoading(true);
+        try {
+            const statement = await balanceHistoryService.getMonthlyStatement(selectedAccount, statementMonth.year, statementMonth.month);
+
+            if (!statement) {
+                toast.current?.show({
+                    severity: 'warn',
+                    summary: 'Sin datos',
+                    detail: `No existe cierre para ${getMonthName(statementMonth.month)} ${statementMonth.year}. Ejecute el cierre primero.`,
+                    life: 5000
+                });
+                return;
+            }
+
+            // ✅ Usar las transacciones que vienen del statement, NO las del estado global
+            const monthTransactions = statement.transactions || [];
+
+            console.log('=== TRANSACCIONES DEL STATEMENT ===');
+            console.log('Cantidad:', monthTransactions.length);
+            console.log('Detalle:', monthTransactions);
+
+            generateStatementPDF(statement, monthTransactions);
+        } catch (error: any) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Error',
+                detail: error.response?.data?.message || error.message,
+                life: 3000
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // ── GENERAR PDF DEL ESTADO DE CUENTA ──────────────────────────────────────
+
+    const generateStatementPDF = (statement: any, monthTransactions: Transaction[]) => {
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+
+        const selectedAccountData = accounts.find((a) => a.account_id === statement.account_id);
+        const accountAlias = selectedAccountData?.account_alias ?? 'Sin cuenta';
+        const accountNumber = selectedAccountData?.account_number ?? '—';
+        const bankName = selectedAccountData?.Bank?.bank_name ?? '—';
+        const accountType = selectedAccountData?.AccountType?.type_name ?? '—';
+        const currencySymbol = getCurrencySymbol(selectedAccountData?.currency_id);
+
+        const monthName = getMonthName(statement.period.month);
+        const startDate = new Date(statement.period.start_date).toLocaleDateString('es-GT');
+        const endDate = new Date(statement.period.end_date).toLocaleDateString('es-GT');
+
+        // Usar los valores del statement en lugar de recalcular
+        const openingBalance = statement.opening_balance || 0;
+        const totalCredits = statement.summary?.total_credits || 0;
+        const totalDebits = statement.summary?.total_debits || 0;
+        const closingBalance = statement.closing_balance || 0;
+
+        // ══════════════════════════════════════════════
+        // ENCABEZADO
+        // ══════════════════════════════════════════════
+        doc.setFillColor(...PRIMARY_COLOR);
+        doc.rect(0, 0, pageWidth, 40, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(18);
+        doc.text('ESTADO DE CUENTA MENSUAL', 105, 18, { align: 'center' });
+        doc.setFontSize(12);
+        doc.text(`${monthName} ${statement.period.year}`, 105, 30, { align: 'center' });
+        doc.setFontSize(8);
+        doc.text(bankName, 105, 38, { align: 'center' });
+
+        // ── Información de la cuenta ──
+        let y = 50;
+        doc.setDrawColor(180, 180, 180);
+        doc.setLineWidth(0.3);
+        doc.rect(10, y, 190, 25);
+        doc.setTextColor(40, 40, 40);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text(accountAlias.toUpperCase(), 15, y + 7);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.text(`Cuenta No.: ${accountNumber}`, 15, y + 14);
+        doc.text(`Tipo: ${accountType}`, 15, y + 21);
+        doc.text(`Moneda: ${currencySymbol === 'Q' ? 'QUETZAL GUATEMALTECO' : currencySymbol}`, pageWidth - 15, y + 21, { align: 'right' });
+
+        // ── Período ──
+        y += 35;
+        doc.setFillColor(220, 230, 241);
+        doc.rect(10, y, 190, 10, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text(`PERÍODO: ${startDate} al ${endDate}`, 15, y + 7);
+
+        // ══════════════════════════════════════════════
+        // RESUMEN DEL MES
+        // ══════════════════════════════════════════════
+        y += 18;
+        doc.setFillColor(220, 230, 241);
+        doc.rect(10, y, 190, 7, 'F');
+        doc.setFontSize(10);
+        doc.text('RESUMEN DEL PERÍODO', pageWidth / 2, y + 5, { align: 'center' });
+
+        y += 12;
+        doc.setFontSize(9);
+
+        const summaryData = [
+            ['Saldo anterior (cierre mes anterior):', `${currencySymbol} ${openingBalance.toLocaleString('es-GT', { minimumFractionDigits: 2 })}`],
+            ['Total Ingresos del mes:', `${currencySymbol} ${totalCredits.toLocaleString('es-GT', { minimumFractionDigits: 2 })}`],
+            ['Total Egresos del mes:', `${currencySymbol} ${totalDebits.toLocaleString('es-GT', { minimumFractionDigits: 2 })}`],
+            ['Número de transacciones:', monthTransactions.length.toString()],
+            ['', ''],
+            ['SALDO AL CIERRE:', `${currencySymbol} ${closingBalance.toLocaleString('es-GT', { minimumFractionDigits: 2 })}`]
+        ];
+
+        autoTable(doc, {
+            startY: y,
+            body: summaryData,
+            theme: 'plain',
+            styles: { fontSize: 10, cellPadding: 4 },
+            columnStyles: {
+                0: { fontStyle: 'bold', cellWidth: 80 },
+                1: { halign: 'right', cellWidth: 100 }
+            },
+            didParseCell: (hookData) => {
+                if (hookData.row.index === 5) {
+                    hookData.cell.styles.fontStyle = 'bold';
+                    hookData.cell.styles.fontSize = 11;
+                    hookData.cell.styles.textColor = [41, 128, 185];
+                }
+            }
+        });
+
+        // ══════════════════════════════════════════════
+        // DETALLE DE MOVIMIENTOS
+        // ══════════════════════════════════════════════
+        const finalY = (doc as any).lastAutoTable.finalY + 15;
+        doc.setFillColor(220, 230, 241);
+        doc.rect(10, finalY, 190, 7, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text('DETALLE DE MOVIMIENTOS', pageWidth / 2, finalY + 5, { align: 'center' });
+
+        // Calcular saldo corrido
+        let saldoCorrido = openingBalance;
+        const tableRows = monthTransactions.map((t) => {
+            const cat = categories.find((c) => c.category_id === t.category_id);
+            const isCredit = cat?.movement_type?.toUpperCase() === 'INGRESO';
+            const amount = Number(t.amount);
+
+            const fecha = new Date(t.transaction_date);
+            const fechaStr = `${fecha.getDate()}/${fecha.getMonth() + 1}`;
+
+            const montoStr = amount.toLocaleString('es-GT', { minimumFractionDigits: 2 });
+
+            let debito = '';
+            let credito = '';
+
+            if (isCredit) {
+                saldoCorrido += amount;
+                credito = montoStr;
+            } else {
+                saldoCorrido -= amount;
+                debito = montoStr;
+            }
+
+            const saldoStr = saldoCorrido.toLocaleString('es-GT', { minimumFractionDigits: 2 });
+
+            return [fechaStr, t.reference_number ?? '—', t.concept?.substring(0, 45) ?? '—', debito, credito, `${currencySymbol} ${saldoStr}`];
+        });
+
+        if (tableRows.length === 0) {
+            tableRows.push(['', '', 'No hay movimientos en este período', '', '', '']);
+        }
+
+        autoTable(doc, {
+            startY: finalY + 10,
+            head: [['FECHA', 'DOCUMENTO', 'DESCRIPCIÓN', 'DÉBITO', 'CRÉDITO', 'SALDO']],
+            body: tableRows,
+            theme: 'striped',
+            headStyles: {
+                fillColor: PRIMARY_COLOR,
+                textColor: 255,
+                fontStyle: 'bold',
+                fontSize: 8,
+                halign: 'center'
+            },
+            columnStyles: {
+                0: { cellWidth: 18, halign: 'center' },
+                1: { cellWidth: 25, halign: 'center' },
+                2: { cellWidth: 65, halign: 'left' },
+                3: { halign: 'right', cellWidth: 28, textColor: [180, 30, 30] },
+                4: { halign: 'right', cellWidth: 28, textColor: [30, 130, 60] },
+                5: { halign: 'right', cellWidth: 32, fontStyle: 'bold' }
+            },
+            styles: { fontSize: 7.5, cellPadding: 2 },
+            alternateRowStyles: { fillColor: [245, 248, 252] }
+        });
+
+        // ── Pie de página ──
+        const pageCount = (doc as any).internal.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            doc.setFontSize(7);
+            doc.setTextColor(150, 150, 150);
+            doc.text('Estado de cuenta mensual - Documento oficial generado electrónicamente', pageWidth / 2, 290, { align: 'center' });
+            doc.text(`Página ${i} de ${pageCount}`, pageWidth - 15, 290, { align: 'right' });
+        }
+
+        doc.save(`Estado_Cuenta_${monthName}_${statement.period.year}_${accountAlias.replace(/\s+/g, '_')}.pdf`);
+        setReportDialog(false);
+    };
+
+    // ── PDF Generation (Comprobante individual) ─────────────────────────────────
 
     const generatePDF = useCallback(
         (data: Transaction) => {
             const doc = new jsPDF();
-
             doc.setFillColor(...PRIMARY_COLOR);
             doc.rect(0, 0, 210, 40, 'F');
             doc.setTextColor(255, 255, 255);
@@ -363,297 +665,40 @@ const Transactions = () => {
         [getAccountName, getCategoryName, getCurrencySymbol]
     );
 
-    // ── Report Export ─────────────────────────────────────────────────────────
-
-    const exportReport = () => {
-        const errs = validateReportFilters(reportFilters);
-        if (Object.keys(errs).length > 0) {
-            setReportErrors(errs);
-            return;
-        }
-
-        const filteredData = transactions.filter((t) => {
-            const tDate = new Date(t.transaction_date);
-            if (reportFilters.dateStart) {
-                const start = new Date(reportFilters.dateStart);
-                start.setHours(0, 0, 0, 0);
-                if (tDate < start) return false;
-            }
-            if (reportFilters.dateEnd) {
-                const end = new Date(reportFilters.dateEnd);
-                end.setHours(23, 59, 59, 999);
-                if (tDate > end) return false;
-            }
-            if (reportFilters.account !== null && t.account_id !== reportFilters.account) return false;
-            return true;
-        });
-
-        if (filteredData.length === 0) {
-            toast.current?.show({ severity: 'warn', summary: 'Sin datos', detail: 'No hay transacciones con esos filtros.', life: 3000 });
-            return;
-        }
-
-        if (reportFilters.format === 'pdf') {
-            exportReportPDF(filteredData);
-        } else {
-            exportExcelCSV(filteredData, reportFilters.format);
-        }
-
-        setReportDialog(false);
-        setReportFilters(EMPTY_REPORT_FILTERS);
-        setReportErrors({});
-    };
-
-    const exportReportPDF = (data: Transaction[]) => {
-        const doc = new jsPDF();
-        const pageWidth = doc.internal.pageSize.getWidth();
-
-        // ── Datos reales de la cuenta ──
-        const selectedAccount = accounts.find((a) => a.account_id == reportFilters.account);
-        const accountAlias = selectedAccount?.account_alias ?? 'Todas las cuentas';
-        const accountNumber = selectedAccount?.account_number ?? '—';
-        const bankName = selectedAccount?.Bank?.bank_name ?? '—';
-        const accountType = selectedAccount?.AccountType?.type_name ?? '—';
-        const saldoInicial = Number(selectedAccount?.initial_balance ?? 0);
-        const saldoActual = Number(selectedAccount?.current_balance ?? 0);
-        const currencySymbol = getCurrencySymbol(selectedAccount?.currency_id ?? data[0]?.currency_id);
-
-        // ── Período ──
-        const dateStartLabel = reportFilters.dateStart ? new Date(reportFilters.dateStart).toLocaleDateString('es-GT', { timeZone: 'UTC', year: 'numeric', month: 'long' }).toUpperCase() : '—';
-
-        // ── Clasificación crédito/débito por movement_type ──
-        const credits = data.filter((t) => {
-            const cat = categories.find((c) => c.category_id == t.category_id);
-            return !t.cancelled && cat?.movement_type?.toUpperCase() === 'INGRESO';
-        });
-        const debits = data.filter((t) => {
-            const cat = categories.find((c) => c.category_id == t.category_id);
-            return !t.cancelled && cat?.movement_type?.toUpperCase() !== 'INGRESO';
-        });
-        const totalCredits = credits.reduce((s, t) => s + Number(t.amount), 0);
-        const totalDebits = debits.reduce((s, t) => s + Number(t.amount), 0);
-        const saldoFinal = saldoInicial + totalCredits - totalDebits;
-        const saldoPromedio = data.length > 0 ? data.reduce((s, t) => s + Number(t.amount), 0) / data.length : 0;
-
-        // ══════════════════════════════════════════════
-        // ENCABEZADO
-        // ══════════════════════════════════════════════
-        doc.setFillColor(...PRIMARY_COLOR);
-        doc.rect(0, 0, pageWidth, 35, 'F');
-
-        // Logo (triángulo rojo)
-        doc.setFillColor(220, 50, 50);
-        doc.triangle(pageWidth - 25, 5, pageWidth - 5, 5, pageWidth - 5, 25, 'F');
-
-        doc.setTextColor(255, 255, 255);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(16);
-        doc.text('ESTADO DE CUENTA', 10, 14);
-        doc.setFontSize(13);
-        doc.text(accountType.toUpperCase(), 10, 22);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-        doc.text(bankName, 10, 30);
-        doc.text('Página 1', pageWidth - 30, 30);
-
-        // ── Recuadro datos del titular ──
-        let y = 42;
-        doc.setDrawColor(180, 180, 180);
-        doc.setLineWidth(0.3);
-        doc.rect(10, y, 130, 22);
-        doc.setTextColor(40, 40, 40);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        doc.text(accountAlias.toUpperCase(), 13, y + 7);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Cuenta No.:   ${accountNumber}`, 13, y + 13);
-        doc.text(`Moneda:        ${currencySymbol === 'Q' ? 'QUETZAL' : currencySymbol}`, 13, y + 19);
-
-        // ── Período ──
-        y = 70;
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(12);
-        doc.setTextColor(40, 40, 40);
-        doc.text(`- ${dateStartLabel} -`, pageWidth / 2, y, { align: 'center' });
-
-        // ══════════════════════════════════════════════
-        // RESUMEN DE MOVIMIENTOS
-        // ══════════════════════════════════════════════
-        y = 76;
-        doc.setFillColor(220, 230, 241);
-        doc.rect(10, y, pageWidth - 20, 7, 'F');
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text('RESUMEN DE MOVIMIENTOS', pageWidth / 2, y + 5, { align: 'center' });
-
-        y = 87;
-        doc.setFontSize(8.5);
-
-        // Fila 1
-        doc.setFont('helvetica', 'bold');
-        doc.text('Saldo inicial:', 12, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`${currencySymbol} ${saldoInicial.toFixed(2)}`, 50, y);
-
-        doc.setFont('helvetica', 'bold');
-        doc.text('Saldo final:', 75, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`${currencySymbol} ${saldoFinal.toFixed(2)}`, 110, y);
-
-        doc.setFont('helvetica', 'bold');
-        doc.text('Mes:', 148, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(dateStartLabel, 158, y);
-
-        // Fila 2
-        y += 7;
-        doc.setFont('helvetica', 'bold');
-        doc.text('No. de Créditos:', 12, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`${credits.length}`, 50, y);
-
-        doc.setFont('helvetica', 'bold');
-        doc.text('No. débitos:', 75, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`${debits.length}`, 110, y);
-
-        doc.setFont('helvetica', 'bold');
-        doc.text('Saldo Promedio:', 148, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`${currencySymbol} ${saldoPromedio.toFixed(2)}`, pageWidth - 12, y, { align: 'right' });
-
-        // Fila 3
-        y += 7;
-        doc.setFont('helvetica', 'bold');
-        doc.text('Valor Créditos:', 12, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`${currencySymbol} ${totalCredits.toFixed(2)}`, 50, y);
-
-        doc.setFont('helvetica', 'bold');
-        doc.text('Valor débitos:', 75, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`${currencySymbol} ${totalDebits.toFixed(2)}`, 110, y);
-
-        doc.setFont('helvetica', 'bold');
-        doc.text('Saldo Actual:', 148, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`${currencySymbol} ${saldoActual.toFixed(2)}`, pageWidth - 12, y, { align: 'right' });
-
-        // Separador
-        y += 5;
-        doc.setDrawColor(180, 180, 180);
-        doc.line(10, y, pageWidth - 10, y);
-
-        // ══════════════════════════════════════════════
-        // DETALLE
-        // ══════════════════════════════════════════════
-        y += 4;
-        doc.setFillColor(220, 230, 241);
-        doc.rect(10, y, pageWidth - 20, 7, 'F');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.text('DETALLE', pageWidth / 2, y + 5, { align: 'center' });
-        y += 9;
-
-        // Saldo inicial como primera fila
-        const primeraFila = ['', '', '', 'Saldo Anterior', '', '', `${currencySymbol} ${saldoInicial.toFixed(2)}`];
-
-        let saldoAcumulado = saldoInicial;
-        const tableRows = data.map((t) => {
-            const cat = categories.find((c) => c.category_id == t.category_id);
-            const isCredit = cat?.movement_type?.toUpperCase() === 'INGRESO';
-            const amount = Number(t.amount);
-            const fecha = new Date(t.transaction_date).toLocaleDateString('es-GT', { timeZone: 'UTC', day: '2-digit' });
-
-            let debito = '';
-            let credito = '';
-
-            if (t.cancelled) {
-                debito = '(Anulada)';
-            } else if (isCredit) {
-                saldoAcumulado += amount;
-                credito = amount.toFixed(2);
-            } else {
-                saldoAcumulado -= amount;
-                debito = amount.toFixed(2);
-            }
-
-            return [fecha, getAccountName(t.account_id), t.reference_number ?? '—', t.concept, debito, credito, t.cancelled ? '—' : `${currencySymbol} ${saldoAcumulado.toFixed(2)}`];
-        });
-
-        autoTable(doc, {
-            startY: y,
-            head: [['DÍA', 'AGENCIA', 'DOCTO.', 'DESCRIPCIÓN', 'DÉBITO', 'CRÉDITO', 'SALDO']],
-            body: [primeraFila, ...tableRows],
-            theme: 'plain',
-            headStyles: {
-                fillColor: PRIMARY_COLOR,
-                textColor: 255,
-                fontStyle: 'bold',
-                fontSize: 8,
-                halign: 'center'
-            },
-            columnStyles: {
-                0: { halign: 'center', cellWidth: 12 },
-                1: { cellWidth: 30 },
-                2: { halign: 'center', cellWidth: 20 },
-                3: { cellWidth: 58 },
-                4: { halign: 'right', cellWidth: 22, textColor: [180, 30, 30] },
-                5: { halign: 'right', cellWidth: 22, textColor: [30, 130, 60] },
-                6: { halign: 'right', cellWidth: 26, fontStyle: 'bold' }
-            },
-            styles: { fontSize: 7.5, cellPadding: 2 },
-            alternateRowStyles: { fillColor: [245, 248, 252] },
-            didParseCell: (hookData) => {
-                // "Saldo Anterior" en negrita
-                if (hookData.section === 'body' && hookData.row.index === 0) {
-                    hookData.cell.styles.fontStyle = 'bold';
-                }
-            }
-        });
-
-        // ── Pie de página ──
-        const pageCount = (doc as any).internal.getNumberOfPages();
-        for (let i = 1; i <= pageCount; i++) {
-            doc.setPage(i);
-            doc.setFontSize(7.5);
-            doc.setTextColor(150, 150, 150);
-            doc.setFont('helvetica', 'normal');
-            doc.text('Este documento es un estado de cuenta oficial. Generado electrónicamente — no requiere firma.', pageWidth / 2, 290, { align: 'center' });
-        }
-
-        doc.save(`Estado_Cuenta_${accountAlias.replace(/\s+/g, '_')}.pdf`);
-    };
-
-    const exportExcelCSV = (data: Transaction[], format: string) => {
-        const worksheetData = data.map((t) => ({
-            ID: t.transaction_id,
-            Cuenta: getAccountName(t.account_id),
-            Tipo: t.transaction_type,
-            Fecha: new Date(t.transaction_date).toLocaleDateString('es-GT', { timeZone: 'UTC' }),
-            Monto: Number(t.amount).toFixed(2),
-            Moneda: getCurrencySymbol(t.currency_id),
-            Estado: t.cancelled ? 'Cancelada' : 'Activa'
-        }));
-        const worksheet = XLSX.utils.json_to_sheet(worksheetData);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Transacciones');
-        XLSX.writeFile(workbook, `Reporte_Transacciones.${format}`, format === 'csv' ? { bookType: 'csv' } : undefined);
-    };
-
     // ── Templates ─────────────────────────────────────────────────────────────
 
     const leftToolbarTemplate = () => (
         <div className="flex flex-wrap gap-2">
             <Button label="Nueva Transacción" icon="pi pi-plus" severity="success" onClick={openNew} />
             <Button
-                label="Generar Estado de Cuenta"
-                icon="pi pi-file-export"
-                severity="help"
+                label="Cierre de Mes"
+                icon="pi pi-calendar"
+                severity="warning"
                 onClick={() => {
-                    setReportFilters(EMPTY_REPORT_FILTERS);
-                    setReportErrors({});
+                    setSelectedAccount(null);
+                    setClosingDialog(true);
+                }}
+            />
+            <Button
+                label="Estado de Cuenta"
+                icon="pi pi-file-pdf"
+                severity="info"
+                onClick={() => {
+                    setSelectedAccount(null);
                     setReportDialog(true);
+                }}
+            />
+            <Button
+                label="Historial de Cierres"
+                icon="pi pi-history"
+                severity="secondary"
+                onClick={() => {
+                    if (!selectedAccount) {
+                        toast.current?.show({ severity: 'warn', summary: 'Seleccione cuenta', detail: 'Primero seleccione una cuenta en el reporte', life: 3000 });
+                        return;
+                    }
+                    loadMonthlyClosings(selectedAccount);
+                    setHistoryDialog(true);
                 }}
             />
         </div>
@@ -661,9 +706,9 @@ const Transactions = () => {
 
     const actionBodyTemplate = (rowData: Transaction) => (
         <div className="flex gap-1">
-            <Button icon="pi pi-file-pdf" rounded text severity="info" tooltip="Descargar comprobante" tooltipOptions={{ position: 'top' }} onClick={() => generatePDF(rowData)} />
-            <Button icon="pi pi-pencil" rounded text severity="success" tooltip="Editar" tooltipOptions={{ position: 'top' }} onClick={() => openEdit(rowData)} disabled={!!rowData.cancelled} />
-            {!rowData.cancelled && <Button icon="pi pi-ban" rounded text severity="danger" tooltip="Anular" tooltipOptions={{ position: 'top' }} onClick={() => confirmCancel(rowData)} />}
+            <Button icon="pi pi-file-pdf" rounded text severity="info" tooltip="Descargar comprobante" onClick={() => generatePDF(rowData)} />
+            <Button icon="pi pi-pencil" rounded text severity="success" tooltip="Editar" onClick={() => openEdit(rowData)} disabled={!!rowData.cancelled} />
+            {!rowData.cancelled && <Button icon="pi pi-ban" rounded text severity="danger" tooltip="Anular" onClick={() => confirmCancel(rowData)} />}
         </div>
     );
 
@@ -675,8 +720,6 @@ const Transactions = () => {
         </span>
     );
 
-    // ── Field Error Helper ────────────────────────────────────────────────────
-
     const fieldError = (key: keyof ValidationErrors) => (errors[key] ? <small className="p-error block mt-1">{errors[key]}</small> : null);
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -686,7 +729,6 @@ const Transactions = () => {
             <Toast ref={toast} />
             <Toolbar className="mb-4" left={leftToolbarTemplate} />
 
-            {/* ── Main Table ── */}
             <DataTable
                 value={transactions}
                 paginator
@@ -738,7 +780,6 @@ const Transactions = () => {
                 }
             >
                 <div className="grid">
-                    {/* Cuenta Bancaria */}
                     <div className="field col-12">
                         <label className="font-bold block mb-2">Cuenta Bancaria *</label>
                         <Dropdown
@@ -753,7 +794,6 @@ const Transactions = () => {
                         {fieldError('account_id')}
                     </div>
 
-                    {/* Categoría */}
                     <div className="field col-12">
                         <label className="font-bold block mb-2">Categoría *</label>
                         <Dropdown
@@ -768,7 +808,6 @@ const Transactions = () => {
                         {fieldError('category_id')}
                     </div>
 
-                    {/* Tipo de Transacción */}
                     <div className="field col-12">
                         <label className="font-bold block mb-2">Tipo de Transacción *</label>
                         <Dropdown
@@ -781,7 +820,6 @@ const Transactions = () => {
                         {fieldError('transaction_type')}
                     </div>
 
-                    {/* Moneda */}
                     <div className="field col-12">
                         <label className="font-bold block mb-2">Tipo de Moneda *</label>
                         <Dropdown
@@ -796,7 +834,6 @@ const Transactions = () => {
                         {fieldError('currency_id')}
                     </div>
 
-                    {/* Concepto */}
                     <div className="field col-12">
                         <label className="font-bold block mb-2">Concepto *</label>
                         <InputText value={transaction.concept} onChange={(e) => handleFieldChange('concept', e.target.value)} className={`w-full ${errors.concept ? 'p-invalid' : ''}`} maxLength={200} placeholder="Descripción de la transacción" />
@@ -804,7 +841,6 @@ const Transactions = () => {
                         {fieldError('concept')}
                     </div>
 
-                    {/* Monto */}
                     <div className="field col-6">
                         <label className="font-bold block mb-2">Monto *</label>
                         <InputNumber
@@ -813,7 +849,7 @@ const Transactions = () => {
                             mode="decimal"
                             minFractionDigits={2}
                             maxFractionDigits={2}
-                            min={0.01} // No negativos, no cero
+                            min={0.01}
                             max={10_000_000}
                             className={`w-full ${errors.amount ? 'p-invalid' : ''}`}
                             placeholder="0.00"
@@ -821,7 +857,6 @@ const Transactions = () => {
                         {fieldError('amount')}
                     </div>
 
-                    {/* Número de Referencia */}
                     <div className="field col-6">
                         <label className="font-bold block mb-2">No. Referencia *</label>
                         <InputNumber
@@ -838,7 +873,6 @@ const Transactions = () => {
                         {fieldError('reference_number')}
                     </div>
 
-                    {/* Fecha */}
                     <div className="field col-12">
                         <label className="font-bold block mb-2">Fecha *</label>
                         <Calendar
@@ -847,7 +881,7 @@ const Transactions = () => {
                             dateFormat="yy-mm-dd"
                             className={`w-full ${errors.transaction_date ? 'p-invalid' : ''}`}
                             showIcon
-                            maxDate={today()} // No fechas futuras
+                            maxDate={today()}
                             placeholder="Seleccione la fecha"
                         />
                         {fieldError('transaction_date')}
@@ -878,84 +912,99 @@ const Transactions = () => {
                 </div>
             </Dialog>
 
-            {/* ── Report Dialog ── */}
+            {/* ── Report Dialog (Estado de Cuenta Mensual) ── */}
             <Dialog
                 visible={reportDialog}
                 style={{ width: '460px' }}
-                header="Configurar Reporte"
+                header="Estado de Cuenta Mensual"
                 modal
                 draggable={false}
-                onHide={() => {
-                    setReportDialog(false);
-                    setReportErrors({});
-                }}
+                onHide={() => setReportDialog(false)}
                 footer={
                     <>
-                        <Button
-                            label="Cancelar"
-                            icon="pi pi-times"
-                            text
-                            onClick={() => {
-                                setReportDialog(false);
-                                setReportErrors({});
-                            }}
-                        />
-                        <Button label="Descargar" icon="pi pi-download" onClick={exportReport} />
+                        <Button label="Cancelar" icon="pi pi-times" text onClick={() => setReportDialog(false)} />
+                        <Button label="Generar" icon="pi pi-download" onClick={generateMonthlyStatement} loading={loading} />
                     </>
                 }
             >
                 <div className="grid">
-                    <div className="field col-6">
-                        <label className="font-bold block mb-2">Fecha Inicio</label>
-                        <Calendar
-                            value={reportFilters.dateStart}
-                            onChange={(e) => {
-                                setReportFilters({ ...reportFilters, dateStart: e.value ?? null });
-                                setReportErrors({});
-                            }}
-                            dateFormat="yy-mm-dd"
-                            showIcon
-                            className="w-full"
-                            maxDate={today()}
-                            placeholder="Desde"
-                        />
-                    </div>
-                    <div className="field col-6">
-                        <label className="font-bold block mb-2">Fecha Fin</label>
-                        <Calendar
-                            value={reportFilters.dateEnd}
-                            onChange={(e) => {
-                                setReportFilters({ ...reportFilters, dateEnd: e.value ?? null });
-                                setReportErrors({});
-                            }}
-                            dateFormat="yy-mm-dd"
-                            showIcon
-                            className={`w-full ${reportErrors.dateEnd ? 'p-invalid' : ''}`}
-                            minDate={reportFilters.dateStart ?? undefined}
-                            maxDate={today()}
-                            placeholder="Hasta"
-                        />
-                        {reportErrors.dateEnd && <small className="p-error block mt-1">{reportErrors.dateEnd}</small>}
+                    <div className="field col-12">
+                        <label className="font-bold block mb-2">Cuenta Bancaria *</label>
+                        <Dropdown value={selectedAccount} options={accounts} onChange={(e) => setSelectedAccount(e.value)} optionLabel="account_alias" optionValue="account_id" placeholder="Seleccione una cuenta" className="w-full" />
                     </div>
 
-                    <div className="field col-12">
-                        <label className="font-bold block mb-2">Cuenta Bancaria</label>
-                        <Dropdown
-                            value={reportFilters.account}
-                            options={[...accounts]}
-                            onChange={(e) => setReportFilters({ ...reportFilters, account: e.value })}
-                            optionLabel="account_alias"
-                            optionValue="account_id"
-                            placeholder="Seleccione una cuenta"
-                            className="w-full"
-                        />
+                    <div className="field col-6">
+                        <label className="font-bold block mb-2">Mes *</label>
+                        <Dropdown value={statementMonth.month} options={MONTHS} onChange={(e) => setStatementMonth({ ...statementMonth, month: e.value })} className="w-full" />
                     </div>
 
-                    <div className="field col-12">
-                        <label className="font-bold block mb-2">Formato de Archivo</label>
-                        <Dropdown value={reportFilters.format} options={EXPORT_FORMATS} onChange={(e) => setReportFilters({ ...reportFilters, format: e.value })} className="w-full" />
+                    <div className="field col-6">
+                        <label className="font-bold block mb-2">Año *</label>
+                        <InputNumber
+                            value={statementMonth.year}
+                            onValueChange={(e) => setStatementMonth({ ...statementMonth, year: e.value || new Date().getFullYear() })}
+                            min={2020}
+                            max={new Date().getFullYear()}
+                            useGrouping={false}
+                            className="w-full"
+                        />
                     </div>
                 </div>
+            </Dialog>
+
+            {/* ── Closing Dialog ── */}
+            <Dialog
+                visible={closingDialog}
+                header="Cierre de Mes"
+                modal
+                style={{ width: '460px' }}
+                onHide={() => setClosingDialog(false)}
+                footer={
+                    <>
+                        <Button label="Cancelar" icon="pi pi-times" text onClick={() => setClosingDialog(false)} />
+                        <Button label="Ejecutar Cierre" icon="pi pi-check" onClick={executeMonthlyClosing} loading={closingLoading} />
+                    </>
+                }
+            >
+                <div className="grid">
+                    <div className="field col-12">
+                        <label className="font-bold block mb-2">Cuenta Bancaria *</label>
+                        <Dropdown value={selectedAccount} options={accounts} onChange={(e) => setSelectedAccount(e.value)} optionLabel="account_alias" optionValue="account_id" placeholder="Seleccione una cuenta" className="w-full" />
+                    </div>
+
+                    <div className="field col-6">
+                        <label className="font-bold block mb-2">Mes a Cerrar *</label>
+                        <Dropdown value={closingMonth.month} options={MONTHS} onChange={(e) => setClosingMonth({ ...closingMonth, month: e.value })} className="w-full" />
+                    </div>
+
+                    <div className="field col-6">
+                        <label className="font-bold block mb-2">Año *</label>
+                        <InputNumber value={closingMonth.year} onValueChange={(e) => setClosingMonth({ ...closingMonth, year: e.value || new Date().getFullYear() })} min={2020} max={new Date().getFullYear()} useGrouping={false} className="w-full" />
+                    </div>
+
+                    <div className="col-12">
+                        <small className="text-500">⚠️ El cierre calculará el saldo al último día del mes seleccionado y lo guardará en el historial. No se podrá volver a calcular el mismo mes.</small>
+                    </div>
+                </div>
+            </Dialog>
+
+            {/* ── Historial de Cierres Dialog ── */}
+            <Dialog
+                visible={historyDialog}
+                header={`Historial de Cierres - ${getAccountName(selectedAccount)}`}
+                style={{ width: '800px' }}
+                modal
+                onHide={() => setHistoryDialog(false)}
+                footer={<Button label="Cerrar" icon="pi pi-times" text onClick={() => setHistoryDialog(false)} />}
+            >
+                <DataTable value={monthlyClosings} rows={10} paginator>
+                    <Column field="year" header="Año" sortable style={{ width: '15%' }} />
+                    <Column field="month" header="Mes" sortable style={{ width: '15%' }} body={(row) => getMonthName(row.month)} />
+                    <Column field="balance_date" header="Fecha Corte" sortable style={{ width: '20%' }} />
+                    <Column field="previous_balance" header="Saldo Anterior" sortable style={{ width: '20%' }} body={(row) => `Q ${row.previous_balance?.toLocaleString()}`} />
+                    <Column field="closing_balance" header="Saldo Cierre" sortable style={{ width: '20%' }} body={(row) => `Q ${row.closing_balance?.toLocaleString()}`} />
+                    <Column field="transaction_count" header="# Transacciones" sortable style={{ width: '10%' }} />
+                </DataTable>
             </Dialog>
         </div>
     );
