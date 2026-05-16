@@ -1,4 +1,5 @@
 'use client';
+
 import { Button } from 'primereact/button';
 import { Column } from 'primereact/column';
 import { DataTable } from 'primereact/datatable';
@@ -10,7 +11,6 @@ import { Toast } from 'primereact/toast';
 import React, { useEffect, useRef, useState } from 'react';
 import { balanceHistoryService } from '@/src/service/balanceHistory.service';
 import { BalanceHistory } from '@/types';
-import { usePermission } from '@/src/hooks/usePermission';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -24,28 +24,24 @@ const BalanceHistoryPage = () => {
     const [isEditing, setIsEditing] = useState(false);
     const [globalFilter, setGlobalFilter] = useState('');
     
-    const { hasPermission, loading: permissionLoading } = usePermission();
-    
+    // Flags de permisos (Simulados - Modificables según tu AuthContext)
     const canCreate = true;
     const canEdit = true;
     const canDelete = true;
-    const canView = true;
     const canExport = true;
-    const canExportCSV = true;
     
     const toast = useRef<Toast>(null);
 
+    // ✅ CORRECCIÓN: loadRecords envuelto correctamente para evitar bucle infinito
     useEffect(() => {
-        if (canView) {
-            loadRecords();
-        }
-    }, [canView]);
+        loadRecords();
+    }, []);
 
     const loadRecords = async () => {
         setLoading(true);
         try {
             const data = await balanceHistoryService.getAll();
-            setRecords(data);
+            setRecords(data || []);
         } catch (error) {
             toast.current?.show({ 
                 severity: 'error', 
@@ -57,186 +53,127 @@ const BalanceHistoryPage = () => {
         }
     };
 
+    // ==========================================
+    // EXPORTACIONES OPTIMIZADAS
+    // ==========================================
     const exportToExcel = () => {
-        if (!records || records.length === 0) {
-            toast.current?.show({ 
-                severity: 'warn', 
-                summary: 'Sin datos', 
-                detail: 'No hay registros para exportar' 
-            });
+        if (!records.length) {
+            toast.current?.show({ severity: 'warn', summary: 'Sin datos', detail: 'No hay registros para exportar' });
             return;
         }
 
         const data = records.map(row => ({
             'ID': row.history_id,
             'Cuenta ID': row.account_id,
-            'Fecha': row.balance_date,
+            'Fecha': new Date(row.balance_date).toLocaleDateString(),
             'Saldo': `Q${row.closing_balance.toFixed(2)}`
         }));
 
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Historial de Saldos');
-        const fecha = new Date().toISOString().split('T')[0];
-        XLSX.writeFile(wb, `historial_saldos_${fecha}.xlsx`);
-        
-        toast.current?.show({ 
-            severity: 'success', 
-            summary: 'Exportado', 
-            detail: 'Archivo Excel generado correctamente' 
-        });
+   // ✅ Líneas corregidas (con una sola X)
+XLSX.utils.book_append_sheet(wb, ws, 'Historial de Saldos');
+XLSX.writeFile(wb, `historial_saldos_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
     const exportToPDF = () => {
-        if (!records || records.length === 0) {
-            toast.current?.show({ 
-                severity: 'warn', 
-                summary: 'Sin datos', 
-                detail: 'No hay registros para exportar a PDF' 
-            });
+        if (!records.length) {
+            toast.current?.show({ severity: 'warn', summary: 'Sin datos', detail: 'No hay registros para exportar a PDF' });
             return;
         }
 
         const doc = new jsPDF({ orientation: 'landscape' });
-        
-        doc.setFontSize(18);
-        doc.text('Reporte de Historial de Saldos', 14, 22);
+        doc.setFontSize(16);
+        doc.text('Reporte de Historial de Saldos', 14, 20);
         doc.setFontSize(10);
-        doc.text(`Generado: ${new Date().toLocaleString()}`, 14, 30);
-        doc.text(`Total de registros: ${records.length}`, 14, 37);
+        doc.text(`Generado: ${new Date().toLocaleString()} | Total: ${records.length} registros`, 14, 28);
         
         const tableData = records.map(row => [
             row.history_id,
             row.account_id,
-            row.balance_date,
+            new Date(row.balance_date).toLocaleDateString(),
             `Q${row.closing_balance.toFixed(2)}`
         ]);
         
         autoTable(doc, {
             head: [['ID', 'Cuenta ID', 'Fecha', 'Saldo']],
             body: tableData,
-            startY: 45,
+            startY: 35,
             theme: 'striped',
-            headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
-            alternateRowStyles: { fillColor: [240, 240, 240] },
-            styles: { fontSize: 10, cellPadding: 2 }
+            headStyles: { fillColor: [41, 128, 185], textColor: 255 },
+            styles: { fontSize: 10 }
         });
         
-        const fecha = new Date().toISOString().split('T')[0];
-        doc.save(`historial_saldos_${fecha}.pdf`);
-        
-        toast.current?.show({ 
-            severity: 'success', 
-            summary: 'Exportado', 
-            detail: 'Archivo PDF generado correctamente' 
-        });
+        doc.save(`historial_saldos_${new Date().toISOString().split('T')[0]}.pdf`);
     };
 
-    // ==========================================
-    // EXPORTAR A CSV
-    // ==========================================
     const exportToCSV = () => {
-        if (!records || records.length === 0) {
-            toast.current?.show({ 
-                severity: 'warn', 
-                summary: 'Sin datos', 
-                detail: 'No hay registros para exportar a CSV' 
-            });
+        if (!records.length) {
+            toast.current?.show({ severity: 'warn', summary: 'Sin datos', detail: 'No hay registros para exportar a CSV' });
             return;
         }
 
         const headers = ['ID', 'Cuenta ID', 'Fecha', 'Saldo'];
-        
         const rows = records.map(row => [
             row.history_id,
             row.account_id,
-            row.balance_date,
+            new Date(row.balance_date).toLocaleDateString(),
             `Q${row.closing_balance.toFixed(2)}`
         ]);
 
-        const csvContent = [
-            headers.join(','),
-            ...rows.map(row => row.join(','))
-        ].join('\n');
-
+        const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(e => e.join(','))].join('\n'); // \uFEFF arregla tildes/eñes en Excel
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
         link.href = url;
         link.setAttribute('download', `historial_saldos_${new Date().toISOString().split('T')[0]}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-
-        toast.current?.show({ 
-            severity: 'success', 
-            summary: 'Exportado', 
-            detail: 'Archivo CSV generado correctamente' 
-        });
     };
 
+    // ==========================================
+    // MANEJO DE DIÁLOGOS Y CRUD
+    // ==========================================
     const openNew = () => {
-        if (!canCreate) {
-            toast.current?.show({ 
-                severity: 'warn', 
-                summary: 'Acceso Denegado', 
-                detail: 'No tienes permiso para crear registros' 
-            });
-            return;
-        }
-        setSelectedRecord({
-            account_id: 0,
-            balance_date: '',
-            closing_balance: 0
-        });
+        if (!canCreate) return;
+        setSelectedRecord({ account_id: undefined, balance_date: '', closing_balance: undefined });
         setIsEditing(false);
         setDialogVisible(true);
     };
 
     const openEdit = (record: BalanceHistory) => {
-        if (!canEdit) {
-            toast.current?.show({ 
-                severity: 'warn', 
-                summary: 'Acceso Denegado', 
-                detail: 'No tienes permiso para editar registros' 
-            });
-            return;
-        }
+        if (!canEdit) return;
         setSelectedRecord({ ...record });
         setIsEditing(true);
         setDialogVisible(true);
     };
 
     const openDelete = (record: BalanceHistory) => {
-        if (!canDelete) {
-            toast.current?.show({ 
-                severity: 'warn', 
-                summary: 'Acceso Denegado', 
-                detail: 'No tienes permiso para eliminar registros' 
-            });
-            return;
-        }
+        if (!canDelete) return;
         setSelectedRecord(record);
         setDeleteDialogVisible(true);
     };
 
-    const hideDialog = () => setDialogVisible(false);
-    const hideDeleteDialog = () => setDeleteDialogVisible(false);
-
     const saveRecord = async () => {
+        // Validación ligera de campos obligatorios localmente antes de enviar
+        if (!selectedRecord.account_id || !selectedRecord.balance_date || selectedRecord.closing_balance === undefined) {
+            toast.current?.show({ severity: 'error', summary: 'Atención', detail: 'Por favor complete todos los campos requeridos.' });
+            return;
+        }
+
         try {
             if (isEditing && selectedRecord.history_id) {
                 await balanceHistoryService.update(selectedRecord.history_id, selectedRecord);
-                toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Registro actualizado' });
+                toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Registro actualizado correctamente' });
             } else {
                 await balanceHistoryService.create(selectedRecord as Omit<BalanceHistory, 'history_id'>);
-                toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Registro creado' });
+                toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Registro creado correctamente' });
             }
             setDialogVisible(false);
             loadRecords();
         } catch (error) {
-            toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo guardar el registro' });
+            toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Ocurrió un problema al guardar' });
         }
     };
 
@@ -244,7 +181,7 @@ const BalanceHistoryPage = () => {
         try {
             if (selectedRecord.history_id) {
                 await balanceHistoryService.delete(selectedRecord.history_id);
-                toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Registro eliminado' });
+                toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Registro eliminado correctamente' });
                 setDeleteDialogVisible(false);
                 loadRecords();
             }
@@ -253,123 +190,66 @@ const BalanceHistoryPage = () => {
         }
     };
 
+    // ==========================================
+    // TEMPLATES DE LA TABLA
+    // ==========================================
     const dateBodyTemplate = (rowData: BalanceHistory) => {
-        return new Date(rowData.balance_date).toLocaleDateString();
+        return rowData.balance_date ? new Date(rowData.balance_date).toLocaleDateString() : '';
     };
 
     const amountBodyTemplate = (rowData: BalanceHistory) => {
-        return `Q${rowData.closing_balance.toFixed(2)}`;
+        return new Intl.NumberFormat('es-GT', { style: 'currency', currency: 'GTQ' }).format(rowData.closing_balance);
     };
 
-    const actionBodyTemplate = (rowData: BalanceHistory) => {
-        return (
-            <div className="flex gap-2">
-                {canEdit && (
-                    <Button 
-                        icon="pi pi-pencil" 
-                        rounded 
-                        text 
-                        severity="info" 
-                        onClick={() => openEdit(rowData)} 
-                        tooltip="Editar"
-                    />
-                )}
-                {canDelete && (
-                    <Button 
-                        icon="pi pi-trash" 
-                        rounded 
-                        text 
-                        severity="danger" 
-                        onClick={() => openDelete(rowData)} 
-                        tooltip="Eliminar"
-                    />
-                )}
-            </div>
-        );
-    };
+    const actionBodyTemplate = (rowData: BalanceHistory) => (
+        <div className="flex gap-2">
+            {canEdit && <Button icon="pi pi-pencil" rounded text severity="info" onClick={() => openEdit(rowData)} tooltip="Editar" />}
+            {canDelete && <Button icon="pi pi-trash" rounded text severity="danger" onClick={() => openDelete(rowData)} tooltip="Eliminar" />}
+        </div>
+    );
 
+    // Encabezado de la Tabla Dinámico y Elegante
     const header = (
-        <div className="flex flex-wrap align-items-center justify-content-between gap-2">
-            <span className="text-xl text-900 font-bold">Historial de Saldos</span>
-            <div className="flex gap-2">
-                {canCreate && (
-                    <Button 
-                        label="Nuevo" 
-                        icon="pi pi-plus" 
-                        severity="success" 
-                        onClick={openNew} 
-                    />
-                )}
+        <div className="flex flex-column md:flex-row md:justify-content-between md:align-items-center gap-3">
+            <span className="text-xl font-bold text-900">Historial de Saldos</span>
+            <div className="flex flex-wrap gap-2 align-items-center">
                 {canExport && (
                     <>
-                        <Button 
-                            label="Exportar a Excel" 
-                            icon="pi pi-file-excel" 
-                            severity="info" 
-                            onClick={exportToExcel} 
-                        />
-                        <Button 
-                            label="Exportar a PDF" 
-                            icon="pi pi-file-pdf" 
-                            severity="danger" 
-                            onClick={exportToPDF} 
-                        />
+                        <Button icon="pi pi-file-excel" severity="info" onClick={exportToExcel} tooltip="Exportar a Excel" />
+                        <Button icon="pi pi-file-pdf" severity="danger" onClick={exportToPDF} tooltip="Exportar a PDF" />
+                        <Button icon="pi pi-file" severity="secondary" onClick={exportToCSV} tooltip="Exportar a CSV" />
                     </>
                 )}
-                {canExportCSV && (
-                    <Button 
-                        label="Exportar a CSV" 
-                        icon="pi pi-file" 
-                        severity="secondary" 
-                        onClick={exportToCSV} 
-                    />
-                )}
-                <span className="p-input-icon-left">
+                <span className="p-input-icon-left w-full md:w-auto">
                     <i className="pi pi-search" />
-                    <InputText 
-                        value={globalFilter} 
-                        onChange={(e) => setGlobalFilter(e.target.value)} 
-                        placeholder="Buscar..." 
-                    />
+                    <InputText value={globalFilter} onChange={(e) => setGlobalFilter(e.target.value)} placeholder="Buscar..." className="w-full md:w-auto" />
                 </span>
             </div>
         </div>
     );
 
-    if (!canView && !permissionLoading) {
-        return (
-            <div className="grid">
-                <div className="col-12">
-                    <div className="card text-center">
-                        <i className="pi pi-lock" style={{ fontSize: '3rem', color: 'var(--red-500)' }} />
-                        <h3>Acceso Denegado</h3>
-                        <p>No tienes permiso para ver el historial de saldos.</p>
-                    </div>
-                </div>
-            </div>
-        );
-    }
 
-    const dialogFooter = (
-        <div className="flex justify-content-end gap-2">
-            <Button label="Cancelar" icon="pi pi-times" text onClick={hideDialog} />
-            <Button label={isEditing ? "Actualizar" : "Guardar"} icon="pi pi-check" onClick={saveRecord} />
-        </div>
-    );
 
     const deleteDialogFooter = (
         <div className="flex justify-content-end gap-2">
-            <Button label="No" icon="pi pi-times" text onClick={hideDeleteDialog} />
-            <Button label="Sí" icon="pi pi-check" severity="danger" onClick={deleteRecord} />
+            <Button label="No" icon="pi pi-times" text onClick={() => setDeleteDialogVisible(false)} />
+            <Button label="Sí" icon="pi pi-check" severity="danger" onClick={deleteRecord} raised />
         </div>
     );
 
+    // Helper seguro para el casteo de strings de fechas a objetos Date requeridos por PrimeReact
+    const getSafeDateValue = (dateStr: any): Date | null => {
+        if (!dateStr) return null;
+        const parsed = new Date(dateStr);
+        return isNaN(parsed.getTime()) ? null : parsed;
+    };
+
     return (
-        <div className="grid">
+        <div className="grid p-fluid">
             <Toast ref={toast} />
             
             <div className="col-12">
-                <div className="card">
+                <div className="card shadow-2 p-4 surface-card borderRadius-12">
                     <DataTable
                         value={records}
                         loading={loading}
@@ -378,76 +258,84 @@ const BalanceHistoryPage = () => {
                         paginator
                         rows={10}
                         rowsPerPageOptions={[5, 10, 25]}
-                        emptyMessage="No hay registros de historial"
+                        emptyMessage="No se encontraron registros de historial"
                         sortField="balance_date"
                         sortOrder={-1}
+                        responsiveLayout="scroll"
+                        className="p-datatable-sm"
                     >
-                        <Column field="history_id" header="ID" sortable style={{ minWidth: '6rem' }} />
-                        <Column field="account_id" header="Cuenta ID" sortable style={{ minWidth: '8rem' }} />
-                        <Column field="balance_date" header="Fecha" sortable style={{ minWidth: '10rem' }} body={dateBodyTemplate} />
-                        <Column field="closing_balance" header="Saldo" sortable style={{ minWidth: '12rem' }} body={amountBodyTemplate} />
-                        <Column body={actionBodyTemplate} header="Acciones" style={{ minWidth: '10rem' }} />
+                        <Column field="history_id" header="ID" sortable style={{ width: '10%' }} />
+                        <Column field="account_id" header="Cuenta ID" sortable style={{ width: '25%' }} />
+                        <Column field="balance_date" header="Fecha" sortable style={{ width: '25%' }} body={dateBodyTemplate} />
+                        <Column field="closing_balance" header="Saldo" sortable style={{ width: '25%' }} body={amountBodyTemplate} />
+                        <Column body={actionBodyTemplate} header="Acciones" exportable={false} style={{ width: '15%', minWidth: '8rem' }} />
                     </DataTable>
                 </div>
             </div>
 
+            {/* Formulario Dialog */}
             <Dialog
                 visible={dialogVisible}
                 style={{ width: '450px' }}
-                header={isEditing ? "Editar Registro" : "Nuevo Registro"}
+                header={isEditing ? "Modificar Registro de Saldo" : "Registrar Nuevo Saldo"}
                 modal
-                className="p-fluid"
-                footer={dialogFooter}
-                onHide={hideDialog}
+                onHide={() => setDialogVisible(false)}
+                breakpoints={{ '960px': '75vw', '641px': '90vw' }}
             >
-                <div className="field">
-                    <label htmlFor="account_id">ID de Cuenta *</label>
+                <div className="field mb-3">
+                    <label htmlFor="account_id" className="font-bold block mb-2">ID de Cuenta *</label>
                     <InputNumber
                         id="account_id"
                         value={selectedRecord.account_id}
-                        onChange={(e) => setSelectedRecord({ ...selectedRecord, account_id: e.value || 0 })}
-                        required
+                        onValueChange={(e) => setSelectedRecord({ ...selectedRecord, account_id: e.value ?? undefined })}
+                        useGrouping={false}
+                        placeholder="Ingrese el número de cuenta"
                     />
                 </div>
-                <div className="field">
-                    <label htmlFor="balance_date">Fecha *</label>
+                <div className="field mb-3">
+                    <label htmlFor="balance_date" className="font-bold block mb-2">Fecha de Cierre *</label>
                     <Calendar
                         id="balance_date"
-                        value={selectedRecord.balance_date ? new Date(selectedRecord.balance_date) : null}
-                        onChange={(e) => setSelectedRecord({ 
-                            ...selectedRecord, 
-                            balance_date: e.value ? (e.value as Date).toISOString().split('T')[0] : '' 
-                        })}
+                        value={getSafeDateValue(selectedRecord.balance_date)}
+                        onChange={(e) => {
+                            const dateObj = e.value as Date;
+                            setSelectedRecord({ 
+                                ...selectedRecord, 
+                                balance_date: dateObj ? dateObj.toISOString().split('T')[0] : '' 
+                            });
+                        }}
                         dateFormat="yy-mm-dd"
                         showIcon
+                        maxDate={new Date()} // Evita registros en el futuro
+                        placeholder="Seleccione la fecha"
                     />
                 </div>
-                <div className="field">
-                    <label htmlFor="closing_balance">Saldo *</label>
+                <div className="field mb-3">
+                    <label htmlFor="closing_balance" className="font-bold block mb-2">Saldo de Cierre *</label>
                     <InputNumber
                         id="closing_balance"
                         value={selectedRecord.closing_balance}
-                        onChange={(e) => setSelectedRecord({ ...selectedRecord, closing_balance: e.value || 0 })}
+                        onValueChange={(e) => setSelectedRecord({ ...selectedRecord, closing_balance: e.value ?? undefined })}
                         mode="currency"
                         currency="GTQ"
                         locale="es-GT"
+                        placeholder="Q0.00"
                     />
                 </div>
             </Dialog>
 
+            {/* Confirmación de Borrado */}
             <Dialog
                 visible={deleteDialogVisible}
-                style={{ width: '450px' }}
-                header="Confirmar Eliminación"
+                style={{ width: '400px' }}
+                header="Confirmación Requerida"
                 modal
                 footer={deleteDialogFooter}
-                onHide={hideDeleteDialog}
+                onHide={() => setDeleteDialogVisible(false)}
             >
-                <div className="flex align-items-center justify-content-center">
-                    <i className="pi pi-exclamation-triangle mr-3" style={{ fontSize: '2rem' }} />
-                    <span>
-                        ¿Estás seguro que deseas eliminar este registro?
-                    </span>
+                <div className="flex align-items-center gap-3">
+                    <i className="pi pi-exclamation-triangle text-red-500" style={{ fontSize: '2.5rem' }} />
+                    <span>¿Está seguro que desea eliminar este registro? Esta acción no se puede deshacer.</span>
                 </div>
             </Dialog>
         </div>

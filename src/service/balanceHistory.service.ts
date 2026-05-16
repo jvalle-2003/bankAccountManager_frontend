@@ -1,20 +1,17 @@
-// src/service/balanceHistory.service.ts
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-
-import axios from 'axios';
 import { BalanceHistory } from '@/types';
-
 import api from '../utils/endpointApi'; 
 
+// Simplificamos el endpoint base usando la instancia 'api' configurada
 const ENDPOINT = '/balance-history';
 
-// Función para obtener headers con token
-const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
+// Helper centralizado para inyectar headers y cookies obligatorias
+const getRequestConfig = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     return {
         headers: {
             Authorization: `Bearer ${token}`
-        }
+        },
+        withCredentials: true // Permite la transmisión de Cookies HttpOnly requerida por el backend
     };
 };
 
@@ -22,27 +19,27 @@ export const balanceHistoryService = {
     // ── CRUD Básico ─────────────────────────────────────────────────────────
 
     async getAll(): Promise<BalanceHistory[]> {
-        const response = await api.get(`${ENDPOINT}`, getAuthHeaders());
+        const response = await api.get(`${ENDPOINT}`, getRequestConfig());
         return response.data;
     },
 
     async getById(id: number): Promise<BalanceHistory> {
-        const response = await api.get(`${ENDPOINT}/${id}`, getAuthHeaders());
+        const response = await api.get(`${ENDPOINT}/${id}`, getRequestConfig());
         return response.data;
     },
 
     async create(data: Omit<BalanceHistory, 'history_id'>): Promise<BalanceHistory> {
-        const response = await api.post(`${ENDPOINT}`, data, getAuthHeaders());
+        const response = await api.post(`${ENDPOINT}`, data, getRequestConfig());
         return response.data;
     },
 
     async update(id: number, data: Partial<BalanceHistory>): Promise<BalanceHistory> {
-        const response = await api.put(`${ENDPOINT}/${id}`, data, getAuthHeaders());
+        const response = await api.put(`${ENDPOINT}/${id}`, data, getRequestConfig());
         return response.data;
     },
 
     async delete(id: number): Promise<void> {
-        await axios.delete(`${API_URL}/balance-history/${id}`, getAuthHeaders());
+        await api.delete(`${ENDPOINT}/${id}`, getRequestConfig());
     },
 
     // ── Cierre de Mes ────────────────────────────────────────────────────────
@@ -50,7 +47,12 @@ export const balanceHistoryService = {
     /**
      * Calcular y guardar cierre de mes para una cuenta específica
      */
-    async calculateMonthlyClosing(data: { account_id: number; year: number; month: number; closed_by?: number }): Promise<{
+    async calculateMonthlyClosing(data: { 
+        account_id: number; 
+        year: number; 
+        month: number; 
+        closed_by?: number 
+    }): Promise<{
         success: boolean;
         message: string;
         data?: {
@@ -64,14 +66,18 @@ export const balanceHistoryService = {
             transaction_count: number;
         };
     }> {
-        const response = await axios.post(`${API_URL}/balance-history/calculate-closing`, data, getAuthHeaders());
+        const response = await api.post(`${ENDPOINT}/calculate-closing`, data, getRequestConfig());
         return response.data;
     },
 
     /**
      * Ejecutar cierre de mes para TODAS las cuentas
      */
-    async executeGlobalClosing(data: { year: number; month: number; closed_by?: number }): Promise<{
+    async executeGlobalClosing(data: { 
+        year: number; 
+        month: number; 
+        closed_by?: number 
+    }): Promise<{
         success: boolean;
         total_accounts: number;
         successful: number;
@@ -79,20 +85,16 @@ export const balanceHistoryService = {
         results: any[];
         errors: any[];
     }> {
-        const response = await axios.post(`${API_URL}/balance-history/global-closing`, data, getAuthHeaders());
+        const response = await api.post(`${ENDPOINT}/global-closing`, data, getRequestConfig());
         return response.data;
     },
 
     /**
      * Obtener cierre de un mes específico
      */
-    // balanceHistory.service.ts
-
     async getMonthlyClosing(accountId: number, year: number, month: number): Promise<BalanceHistory | null> {
         try {
-            // ✅ URL correcta - debe coincidir con la ruta del backend
-            const response = await axios.get(`${API_URL}/balance-history/monthly-closing/${accountId}/${year}/${month}`, getAuthHeaders());
-            console.log('Respuesta getMonthlyClosing:', response.data);
+            const response = await api.get(`${ENDPOINT}/monthly-closing/${accountId}/${year}/${month}`, getRequestConfig());
             return response.data.success ? response.data.data : null;
         } catch (error) {
             console.error('Error en getMonthlyClosing:', error);
@@ -105,7 +107,7 @@ export const balanceHistoryService = {
      */
     async getClosingHistory(accountId: number, limit: number = 12): Promise<BalanceHistory[]> {
         try {
-            const response = await axios.get(`${API_URL}/balance-history/closing-history/${accountId}?limit=${limit}`, getAuthHeaders());
+            const response = await api.get(`${ENDPOINT}/closing-history/${accountId}?limit=${limit}`, getRequestConfig());
             return response.data.success ? response.data.data : [];
         } catch (error) {
             console.error('Error en getClosingHistory:', error);
@@ -118,7 +120,7 @@ export const balanceHistoryService = {
      */
     async getOpeningBalance(accountId: number, year: number, month: number): Promise<number> {
         try {
-            const response = await axios.get(`${API_URL}/balance-history/opening-balance/${accountId}/${year}/${month}`, getAuthHeaders());
+            const response = await api.get(`${ENDPOINT}/opening-balance/${accountId}/${year}/${month}`, getRequestConfig());
             return response.data.success ? response.data.data.opening_balance : 0;
         } catch (error) {
             console.error('Error en getOpeningBalance:', error);
@@ -138,7 +140,7 @@ export const balanceHistoryService = {
         closing_balance: number;
     } | null> {
         try {
-            const response = await axios.get(`${API_URL}/balance-history/balance-by-date/${accountId}/${balanceDate}`, getAuthHeaders());
+            const response = await api.get(`${ENDPOINT}/balance-by-date/${accountId}/${balanceDate}`, getRequestConfig());
             return response.data.success ? response.data.data : null;
         } catch (error) {
             console.error('Error en getBalanceByDate:', error);
@@ -171,7 +173,7 @@ export const balanceHistoryService = {
         transactions: any[];
     } | null> {
         try {
-            const response = await axios.get(`${API_URL}/balance-history/statement/${accountId}/${year}/${month}`, getAuthHeaders());
+            const response = await api.get(`${ENDPOINT}/statement/${accountId}/${year}/${month}`, getRequestConfig());
             return response.data.success ? response.data.data : null;
         } catch (error) {
             console.error('Error en getMonthlyStatement:', error);

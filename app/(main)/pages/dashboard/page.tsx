@@ -4,6 +4,7 @@ import { Chart } from 'primereact/chart';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { CurrencyApiService } from '@/src/service/currencyApi.service';
+import api from '../../../../src/utils/endpointApi'; // Asegúrate de que la ruta sea correcta
 
 const Dashboard = () => {
     const [stats, setStats] = useState<any>(null);
@@ -23,58 +24,61 @@ const Dashboard = () => {
     };
 
     useEffect(() => {
-        const fetchDashboardData = async () => {
-            try {
-                const [response, rates] = await Promise.all([
-                    fetch(API_URL),
-                    CurrencyApiService.getLiveRates()
-                ]);
-                
-                const data = await response.json();
-                setStats(data);
-                setExchangeRates(rates);
+    const fetchDashboardData = async () => {
+        try {
+            // Reemplazamos fetch(API_URL) por api.get()
+            const [response, rates] = await Promise.all([
+                api.get('/dashboard/stats'), // Al usar 'api', ya incluye los tokens/CORS automáticamente
+                CurrencyApiService.getLiveRates()
+            ]);
+            
+            // IMPORTANTE: Axios ya convierte la respuesta a JSON y la guarda en .data
+            const data = response.data; 
+            
+            setStats(data);
+            setExchangeRates(rates);
 
-                // 1. Filtrar solo bancos con saldo > 0
-                const labels = Array.from(new Set(
-                    data.distribucionBancos
-                        ?.filter((item: any) => parseFloat(item.total) > 0)
-                        .map((item: any) => item.bank || item.name)
-                )) as string[];
+            // 1. Filtrar solo bancos con saldo > 0
+            const labels = Array.from(new Set(
+                data.distribucionBancos
+                    ?.filter((item: any) => parseFloat(item.total) > 0)
+                    .map((item: any) => item.bank || item.name)
+            )) as string[];
 
-                // 2. Identificar monedas únicas (filtrando nulos)
-                const simbolosMoneda = Array.from(new Set(
-                    data.distribucionBancos
-                        ?.map((item: any) => item.currency || item.id)
-                        .filter((s: any) => s !== null && s !== undefined && s !== '')
-                )) as string[];
+            // 2. Identificar monedas únicas (filtrando nulos)
+            const simbolosMoneda = Array.from(new Set(
+                data.distribucionBancos
+                    ?.map((item: any) => item.currency || item.id)
+                    .filter((s: any) => s !== null && s !== undefined && s !== '')
+            )) as string[];
 
-                // 3. Generar datasets para la gráfica
-                const datasetsDinamicos = simbolosMoneda.map((simbolo, index) => {
-                    const color = coloresMonedas[simbolo] || ['#8B5CF6', '#EC4899', '#10B981'][index % 3];
-                    return {
-                        label: `Saldos en ${simbolo}`,
-                        backgroundColor: color,
-                        borderRadius: 10,
-                        barPercentage: 0.8,
-                        categoryPercentage: 0.9,
-                        data: labels.map(bankName => {
-                            const registro = data.distribucionBancos.find((item: any) => 
-                                (item.bank === bankName || item.name === bankName) && (item.currency === simbolo || item.id === simbolo)
-                            );
-                            return registro ? parseFloat(registro.total) : 0;
-                        })
-                    };
-                });
+            // 3. Generar datasets para la gráfica
+            const datasetsDinamicos = simbolosMoneda.map((simbolo, index) => {
+                const color = coloresMonedas[simbolo] || ['#8B5CF6', '#EC4899', '#10B981'][index % 3];
+                return {
+                    label: `Saldos en ${simbolo}`,
+                    backgroundColor: color,
+                    borderRadius: 10,
+                    barPercentage: 0.8,
+                    categoryPercentage: 0.9,
+                    data: labels.map(bankName => {
+                        const registro = data.distribucionBancos.find((item: any) => 
+                            (item.bank === bankName || item.name === bankName) && (item.currency === simbolo || item.id === simbolo)
+                        );
+                        return registro ? parseFloat(registro.total) : 0;
+                    })
+                };
+            });
 
-                setChartData({ labels: labels, datasets: datasetsDinamicos });
-                setLoading(false);
-            } catch (error) {
-                console.error("Error cargando el dashboard:", error);
-                setLoading(false);
-            }
-        };
-        fetchDashboardData();
-    }, []);
+            setChartData({ labels: labels, datasets: datasetsDinamicos });
+            setLoading(false);
+        } catch (error) {
+            console.error("Error cargando el dashboard:", error);
+            setLoading(false);
+        }
+    };
+    fetchDashboardData();
+}, []);
 
     if (loading) return <div className="card">Cargando indicadores de GESBANCA...</div>;
 

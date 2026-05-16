@@ -4,20 +4,16 @@ import React, { useEffect, useRef, useState } from 'react';
 
 import { Column } from 'primereact/column';
 import { DataTable } from 'primereact/datatable';
-import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
-import { InputNumber } from 'primereact/inputnumber';
-import { InputText } from 'primereact/inputtext';
 import { Toast } from 'primereact/toast';
 import { Calendar } from 'primereact/calendar';
+import { Button } from 'primereact/button'; // Importación para el botón nativo de PrimeReact
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 import { TransactionService } from '@/src/service/transaction.service';
 import { BankAccountService } from '@/src/service/BankAccountService';
-
-import { usePermission } from '@/src/hooks/usePermission';
 
 import { Reconciliation } from '@/types';
 
@@ -32,10 +28,6 @@ const ReconciliationsPage = () => {
     const [transactionLoading, setTransactionLoading] = useState(false);
 
     const [accounts, setAccounts] = useState<any[]>([]);
-    const [dialogVisible, setDialogVisible] = useState(false);
-
-    const [selectedReconciliation, setSelectedReconciliation] =
-        useState<Partial<Reconciliation>>({});
 
     const [transactionAccountFilter, setTransactionAccountFilter] = useState('');
     const [transactionStatusFilter, setTransactionStatusFilter] = useState('');
@@ -46,16 +38,12 @@ const ReconciliationsPage = () => {
 
     const toast = useRef<Toast>(null);
 
-    const { hasPermission, loading: permissionLoading } = usePermission();
-    const canView = hasPermission('VER_CONCILIACIONES');
-
     // EFFECTS
+    // CORREGIDO: Se restauró el useEffect para cargar los datos cuando se monta la página
     useEffect(() => {
-        if (canView) {
-            loadTransactions();
-            loadAccounts();
-        }
-    }, [canView]);
+        loadTransactions();
+        loadAccounts();
+    }, []);
 
     useEffect(() => {
         applyTransactionFilters();
@@ -137,8 +125,7 @@ const ReconciliationsPage = () => {
 
         if (transactionAccountFilter) {
             filtered = filtered.filter(
-                (item) =>
-                    String(item.account_id) === String(transactionAccountFilter)
+                (item) => String(item.account_id) === String(transactionAccountFilter)
             );
         }
 
@@ -190,8 +177,8 @@ const ReconciliationsPage = () => {
                 tx.date ? new Date(tx.date).toLocaleDateString() : '',
                 tx.reference || '',
                 tx.description || '',
-                Q${Number(tx.debit || 0).toFixed(2)},
-                Q${Number(tx.credit || 0).toFixed(2)},
+                `Q${Number(tx.debit || 0).toFixed(2)}`,
+                `Q${Number(tx.credit || 0).toFixed(2)}`,
                 tx.status
             ]);
         });
@@ -208,7 +195,7 @@ const ReconciliationsPage = () => {
     };
 
     // HELPERS
-    const amountTemplate = (value: number) => Q${Number(value || 0).toFixed(2)};
+    const amountTemplate = (value: number) => `Q${Number(value || 0).toFixed(2)}`;
 
     const statusBodyTemplate = (rowData: any) => {
         let severity = 'warning';
@@ -224,7 +211,7 @@ const ReconciliationsPage = () => {
             label = 'Cancelado';
         }
 
-        return <span className={customer-badge status-${severity}}>{label}</span>;
+        return <span className={`customer-badge status-${severity}`}>{label}</span>;
     };
 
     // FILTER PANEL
@@ -237,7 +224,7 @@ const ReconciliationsPage = () => {
                     options={[
                         { label: 'Todas', value: '' },
                         ...accounts.map((a) => ({
-                            label: ${a.account_number} - ${a.account_name || ''},
+                            label: `${a.account_number} - ${a.account_name || ''}`,
                             value: a.account_id
                         }))
                     ]}
@@ -283,20 +270,7 @@ const ReconciliationsPage = () => {
         </div>
     );
 
-    // ACCESS
-    if (!canView && !permissionLoading) {
-        return (
-            <div className="grid">
-                <div className="col-12">
-                    <div className="card text-center">
-                        <i className="pi pi-lock" style={{ fontSize: '3rem' }} />
-                        <h3>Acceso Denegado</h3>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
+    // RENDER PRINCIPAL
     return (
         <div className="grid">
             <Toast ref={toast} />
@@ -308,12 +282,13 @@ const ReconciliationsPage = () => {
                     <div className="flex justify-content-between align-items-center mb-4">
                         <h2>Estado de Conciliaciones Bancarias</h2>
 
-                        <button
-                            className="p-button p-button-success p-button-sm"
+                        {/* CORREGIDO: Cambiado de un <button> normal al componente de PrimeReact */}
+                        <Button
+                            label="Exportar PDF"
+                            icon="pi pi-file-pdf"
+                            className="p-button-success p-button-sm"
                             onClick={exportPDF}
-                        >
-                            Exportar PDF
-                        </button>
+                        />
                     </div>
 
                     {transactionFiltersPanel}

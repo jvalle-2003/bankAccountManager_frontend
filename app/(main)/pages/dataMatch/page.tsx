@@ -15,6 +15,7 @@ import { Tag } from 'primereact/tag';
 import { Dropdown } from 'primereact/dropdown';
 import { Button } from 'primereact/button';
 import { ProgressSpinner } from 'primereact/progressspinner';
+import { BankAccountService } from '@/src/service/BankAccountService';
 
 import axios from 'axios';
 
@@ -54,13 +55,22 @@ const DataMatch = () => {
     }, []);
 
     const loadAccounts = async () => {
-        try {
-            const response = await axios.get(`${API_URL}/bank-accounts`);
-            setAccounts(response.data);
-        } catch (error) {
-            console.error(error);
-        }
-    };
+    try {
+        // Consumimos el método del servicio que ya maneja la URL y el `.data`
+        const data = await BankAccountService.getAccounts();
+
+        setAccounts(data);
+
+    } catch (error) {
+        console.error(error);
+
+        toast.current?.show({
+            severity: 'error',
+            summary: 'Error',
+            detail: 'No se pudieron cargar las cuentas'
+        });
+    }
+};
 
     const onUploadOCR = async (event: FileUploadHandlerEvent) => {
 
