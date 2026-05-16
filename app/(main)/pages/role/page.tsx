@@ -8,30 +8,47 @@ import { Dialog } from 'primereact/dialog';
 import { InputText } from 'primereact/inputtext';
 import { Toolbar } from 'primereact/toolbar';
 import { Toast } from 'primereact/toast';
+import { MultiSelect } from 'primereact/multiselect';
 import { InputSwitch } from 'primereact/inputswitch';
 import { RoleService } from '../../../../src/service/role.service'; // Ajusta la ruta
+import { PermissionsService } from '../../../../src/service/permissions.service'; 
 
 const Role = () => {
     const emptyRole = {
         role_id: null,
         role_name: "",
         description: "",
-        active: true
+        active: true,
+        permissions: [] // Para almacenar los permisos seleccionados
     };
 
+    // Estados
     const [roles, setRoles] = useState<any[]>([]);
     const [role, setRole] = useState<any>(emptyRole);
+    const [availablePermissions, setAvailablePermissions] = useState<any[]>([]); // 👈 Estado para los permisos del selector
     const [roleDialog, setRoleDialog] = useState(false);
     const [deleteDialog, setDeleteDialog] = useState(false);
+    
     const toast = useRef<Toast>(null);
 
+    // Cargar datos al iniciar
     useEffect(() => {
         loadRoles();
+        loadPermissions();
     }, []);
 
     const loadRoles = async () => {
         const data = await RoleService.getAll();
         setRoles(data);
+    };
+
+    const loadPermissions = async () => {
+        try {
+            const data = await PermissionsService.getAll();
+            setAvailablePermissions(data);
+        } catch (error) {
+            toast.current?.show({ severity: "error", summary: "Error", detail: "No se pudieron cargar los permisos", life: 3000 });
+        }
     };
 
     const openNew = () => {
@@ -40,12 +57,13 @@ const Role = () => {
     };
 
     const editRole = (rowData: any) => {
-        setRole({ ...rowData });
+        // Asegurarnos de que si rowData.permissions es null, sea un arreglo vacío
+        setRole({ ...rowData, permissions: rowData.permissions || [] });
         setRoleDialog(true);
     };
 
     const saveRole = async () => {
-        // Validación: role_name es obligatorio según Sequelize
+        // Validación: role_name es obligatorio
         if (!role.role_name.trim()) {
             toast.current?.show({ severity: "warn", summary: "Requerido", detail: "El nombre del rol es obligatorio", life: 3000 });
             return;
@@ -104,24 +122,41 @@ const Role = () => {
                     </DataTable>
 
                     {/* DIALOGO CREAR/EDITAR */}
-                    <Dialog visible={roleDialog} style={{ width: '450px' }} header="Detalles del Rol" modal onHide={() => setRoleDialog(false)}
+                    <Dialog visible={roleDialog} style={{ width: '500px' }} header="Detalles del Rol" modal onHide={() => setRoleDialog(false)}
                         footer={<>
                             <Button label="Cancelar" icon="pi pi-times" text onClick={() => setRoleDialog(false)} />
-                            <Button label="Guardar" icon="pi pi-check" text onClick={saveRole} />
+                            <Button label="Guardar" icon="pi pi-check" onClick={saveRole} />
                         </>}>
                         
                         <div className="field">
                             <label htmlFor="role_name" className="font-bold">Nombre del Rol</label>
-                            <InputText id="role_name" value={role.role_name} onChange={(e) => setRole({ ...role, role_name: e.target.value })} required className={!role.role_name ? 'p-invalid' : ''} />
+                            <InputText id="role_name" value={role.role_name} onChange={(e) => setRole({ ...role, role_name: e.target.value })} required className={!role.role_name ? 'p-invalid w-full' : 'w-full'} />
                         </div>
 
                         <div className="field">
                             <label htmlFor="description" className="font-bold">Descripción (Máx 10)</label>
-                            <InputText id="description" value={role.description} onChange={(e) => setRole({ ...role, description: e.target.value })} maxLength={10} />
+                            <InputText id="description" value={role.description} onChange={(e) => setRole({ ...role, description: e.target.value })} maxLength={10} className="w-full" />
                         </div>
 
-                        <div className="field flex align-items-center gap-2">
-                            <label htmlFor="active" className="font-bold">¿Activo?</label>
+                        {/* 🌟 AQUÍ ESTÁ EL SELECTOR DE PERMISOS 🌟 */}
+                        <div className="field">
+                            <label htmlFor="permissions" className="font-bold">Permisos Asignados</label>
+                            <MultiSelect 
+                                id="permissions"
+                                value={role.permissions} 
+                                options={availablePermissions} 
+                                onChange={(e) => setRole({ ...role, permissions: e.value })} 
+                                optionLabel="permission_name" 
+                                placeholder="Selecciona los permisos" 
+                                display="chip"
+                                filter
+                                className="w-full" 
+                                emptyMessage="No hay permisos disponibles"
+                            />
+                        </div>
+
+                        <div className="field flex align-items-center gap-2 mt-4">
+                            <label htmlFor="active" className="font-bold mb-0">¿Activo?</label>
                             <InputSwitch id="active" checked={role.active} onChange={(e) => setRole({ ...role, active: e.value })} />
                         </div>
                     </Dialog>
@@ -130,9 +165,12 @@ const Role = () => {
                     <Dialog visible={deleteDialog} style={{ width: '400px' }} header="Confirmar" modal onHide={() => setDeleteDialog(false)}
                         footer={<>
                             <Button label="No" icon="pi pi-times" text onClick={() => setDeleteDialog(false)} />
-                            <Button label="Sí" icon="pi pi-check" text onClick={deleteRole} />
+                            <Button label="Sí" icon="pi pi-check" text onClick={deleteRole} severity="danger" />
                         </>}>
-                        <p>¿Seguro que desea eliminar <b>{role.role_name}</b>?</p>
+                        <div className="flex align-items-center justify-content-center">
+                            <i className="pi pi-exclamation-triangle mr-3" style={{ fontSize: '2rem' }} />
+                            <span>¿Seguro que desea eliminar <b>{role.role_name}</b>?</span>
+                        </div>
                     </Dialog>
                 </div>
             </div>

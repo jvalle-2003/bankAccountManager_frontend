@@ -190,8 +190,8 @@ const ReconciliationsPage = () => {
                 tx.date ? new Date(tx.date).toLocaleDateString() : '',
                 tx.reference || '',
                 tx.description || '',
-                `Q${Number(tx.debit || 0).toFixed(2)}`,
-                `Q${Number(tx.credit || 0).toFixed(2)}`,
+                Q${Number(tx.debit || 0).toFixed(2)},
+                Q${Number(tx.credit || 0).toFixed(2)},
                 tx.status
             ]);
         });
@@ -208,7 +208,7 @@ const ReconciliationsPage = () => {
     };
 
     // HELPERS
-    const amountTemplate = (value: number) => `Q${Number(value || 0).toFixed(2)}`;
+    const amountTemplate = (value: number) => Q${Number(value || 0).toFixed(2)};
 
     const statusBodyTemplate = (rowData: any) => {
         let severity = 'warning';
@@ -224,7 +224,7 @@ const ReconciliationsPage = () => {
             label = 'Cancelado';
         }
 
-        return <span className={`customer-badge status-${severity}`}>{label}</span>;
+        return <span className={customer-badge status-${severity}}>{label}</span>;
     };
 
     // FILTER PANEL
@@ -237,7 +237,7 @@ const ReconciliationsPage = () => {
                     options={[
                         { label: 'Todas', value: '' },
                         ...accounts.map((a) => ({
-                            label: `${a.account_number} - ${a.account_name || ''}`,
+                            label: ${a.account_number} - ${a.account_name || ''},
                             value: a.account_id
                         }))
                     ]}

@@ -1,21 +1,22 @@
-import axios from 'axios';
-const BASE_URL = 'http://localhost:3001/api';
-const API_URL = `${BASE_URL}/users`;
+
+import api from '../utils/endpointApi'; 
+
+const ENDPOINT = '/users';
 
 export const UserService = {
     async getAll() {
         try {
-            const res = await axios.get(API_URL);
-            return res.data;
+            const res = await api.get(ENDPOINT);
+            return res.data.data ? res.data.data : res.data;
         } catch (error) {
             console.error("Error en UserService.getAll:", error);
-            throw error; // Re-lanzamos para que el componente (Toast) lo capture
+            throw error; 
         }
     },
 
     async create(data: any) {
         try {
-            const res = await axios.post(API_URL, data);
+            const res = await api.post(ENDPOINT, data);
             return res.data;
         } catch (error) {
             console.error("Error en UserService.create:", error);
@@ -25,7 +26,7 @@ export const UserService = {
 
     async update(id: number, data: any) {
         try {
-            const res = await axios.put(`${API_URL}/${id}`, data);
+            const res = await api.put(`${ENDPOINT}/${id}`, data);
             return res.data;
         } catch (error) {
             console.error("Error en UserService.update:", error);
@@ -35,7 +36,7 @@ export const UserService = {
 
     async delete(id: number) {
         try {
-            const res = await axios.delete(`${API_URL}/${id}`);
+            const res = await api.delete(`${ENDPOINT}/${id}`);
             return res.data;
         } catch (error) {
             console.error("Error en UserService.delete:", error);

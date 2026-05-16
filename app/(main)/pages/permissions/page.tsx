@@ -6,7 +6,7 @@ import { InputText } from 'primereact/inputtext';
 import { Dialog } from 'primereact/dialog';
 import { Toast } from 'primereact/toast';
 import React, { useEffect, useRef, useState } from 'react';
-import { permissionsService } from '@/src/service/permissions.service';
+import { PermissionsService } from '../../../../src/service/permissions.service'; 
 import { Permission } from '@/types';
 
 const PermissionsPage = () => {
@@ -31,7 +31,7 @@ const PermissionsPage = () => {
     const loadPermissions = async () => {
         setLoading(true);
         try {
-            const data = await permissionsService.getAll();
+            const data = await PermissionsService.getAll();
             setPermissions(data);
         } catch (error) {
             toast.current?.show({ 
@@ -77,14 +77,14 @@ const PermissionsPage = () => {
     const savePermission = async () => {
         try {
             if (isEditing && selectedPermission.id_permission) {
-                await permissionsService.update(selectedPermission.id_permission, selectedPermission);
+                await PermissionsService.update(selectedPermission.id_permission, selectedPermission);
                 toast.current?.show({ 
                     severity: 'success', 
                     summary: 'Éxito', 
                     detail: 'Permiso actualizado' 
                 });
             } else {
-                await permissionsService.create(selectedPermission as Omit<Permission, 'id_permission'>);
+                await PermissionsService.create(selectedPermission as Omit<Permission, 'id_permission'>);
                 toast.current?.show({ 
                     severity: 'success', 
                     summary: 'Éxito', 
@@ -106,7 +106,7 @@ const PermissionsPage = () => {
     const deletePermission = async () => {
         try {
             if (selectedPermission.id_permission) {
-                await permissionsService.delete(selectedPermission.id_permission);
+                await PermissionsService.delete(selectedPermission.id_permission);
                 toast.current?.show({ 
                     severity: 'success', 
                     summary: 'Éxito', 
@@ -219,6 +219,8 @@ const PermissionsPage = () => {
                         loading={loading}
                         header={header}
                         globalFilter={globalFilter}
+                        globalFilterFields={['id_permission', 'permission_name', 'description', 'module']}
+                        filters={{}}
                         paginator
                         rows={10}
                         rowsPerPageOptions={[5, 10, 25]}

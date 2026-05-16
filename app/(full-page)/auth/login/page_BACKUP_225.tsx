@@ -19,6 +19,8 @@ const LoginPage = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
+<<<<<<< HEAD
+=======
     const { setUserPermissions } = usePermissions();
 
     // --- ESTADOS PARA EL FORMULARIO DE RECUPERACIÓN ---
@@ -30,6 +32,7 @@ const LoginPage = () => {
     const [recoveryLoading, setRecoveryLoading] = useState(false);
     
     const toast = useRef<Toast>(null);
+>>>>>>> 221ebf4 (login actualizado)
     const { layoutConfig } = useContext(LayoutContext);
     const router = useRouter();
 
@@ -42,6 +45,32 @@ const LoginPage = () => {
         }
         setLoading(true);
         setError('');
+<<<<<<< HEAD
+
+        try {
+            const response = await axios.post('http://localhost:3001/api/auth/login', {
+                username,
+                password
+            });
+
+            // ==========================================
+
+            // GUARDAR TOKEN Y DATOS DEL USUARIO
+
+            // ==========================================
+            if (response.data.success && response.data.token) {
+                // Guardar token en localStorage
+                localStorage.setItem('token', response.data.token);
+                // Guardar datos del usuario
+                localStorage.setItem('user', JSON.stringify(response.data.user));
+
+                axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
+
+                // Redirigir al dashboard
+                router.push('/pages/dashboard');
+            } else {
+                setError('Respuesta inválida del servidor');
+=======
         try {
             const response = await axios.post('http://localhost:3001/api/auth/login', { username, password }, { withCredentials: true });
             if (response.data.success) {
@@ -52,6 +81,7 @@ const LoginPage = () => {
                     console.warn('El backend no envió permisos. Asegúrate de que el login los incluya.');
                 }
                 router.push('/pages/crud');
+>>>>>>> 221ebf4 (login actualizado)
             }
         } catch (error: any) {
             setError(error.response?.data?.message || 'Error al iniciar sesión');
@@ -160,11 +190,25 @@ const LoginPage = () => {
                         </div>
 
                         <div>
+<<<<<<< HEAD
+                            <label htmlFor="username" className="block text-900 text-xl font-medium mb-2">
+                                Usuario
+                            </label>
+                            <InputText id="username" type="text" placeholder="Nombre de Usuario" className="w-full md:w-30rem mb-5" style={{ padding: '1rem' }} value={username} onChange={(e) => setUsername(e.target.value)} />
+
+                            <label htmlFor="password1" className="block text-900 font-medium text-xl mb-2">
+                                Contraseña
+                            </label>
+                            <Password inputId="password1" value={password} onChange={(e) => setPassword(e.target.value)} feedback={false} placeholder="Contraseña" toggleMask className="w-full mb-5" inputClassName="w-full p-3 md:w-30rem" />
+
+                            {error && <div style={{ color: 'red', marginBottom: '1rem', textAlign: 'center' }}>{error}</div>}
+=======
                             <label className="block text-900 text-xl font-medium mb-2">Usuario</label>
                             <InputText value={username} onChange={(e) => setUsername(e.target.value)} className="w-full md:w-30rem mb-5" style={{ padding: '1rem' }} />
 
                             <label className="block text-900 font-medium text-xl mb-2">Contraseña</label>
                             <Password value={password} onChange={(e) => setPassword(e.target.value)} toggleMask className="w-full mb-5" inputClassName="w-full p-3 md:w-30rem" feedback={false} />
+>>>>>>> 221ebf4 (login actualizado)
 
                             <div className="flex align-items-center justify-content-between mb-5 gap-5">
                                 <div className="flex align-items-center">
@@ -175,8 +219,13 @@ const LoginPage = () => {
                                     ¿Olvidé mi contraseña?
                                 </a>
                             </div>
+<<<<<<< HEAD
+
+                            <Button label={loading ? 'Cargando...' : 'Iniciar Sesión'} className="w-full p-3 text-xl" onClick={handleLogin} disabled={loading} />
+=======
                             
                             <Button label={loading ? "Cargando..." : "Iniciar Sesión"} className="w-full p-3 text-xl" onClick={handleLogin} disabled={loading} />
+>>>>>>> 221ebf4 (login actualizado)
                         </div>
                     </div>
                 </div>

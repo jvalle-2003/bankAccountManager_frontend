@@ -1,6 +1,7 @@
-import axios from 'axios';
+import api from '../utils/endpointApi'; 
 
-const API_URL = 'http://localhost:3001/api/transactions';
+const ENDPOINT = '/transactions';
+
 
 // Función para obtener headers con token
 const getAuthHeaders = () => {
@@ -15,31 +16,31 @@ const getAuthHeaders = () => {
 export const TransactionService = {
     // Obtener todas las transacciones (findAll)
     async getAll() {
-        const res = await axios.get(API_URL, getAuthHeaders());
+        const res = await api.get(ENDPOINT);
         return res.data;
     },
 
     // Obtener una sola transacción por ID (findOne)
     async getById(id: string) {
-        const res = await axios.get(`${API_URL}/${id}`, getAuthHeaders());
+        const res = await api.get(`${ENDPOINT}/${id}`);
         return res.data;
     },
 
     // Crear una nueva transacción (post "/")
     async create(data: any) {
-        const res = await axios.post(API_URL, data, getAuthHeaders());
+        const res = await api.post(ENDPOINT, data);
         return res.data;
     },
 
     // Actualizar una transacción (put "/:id")
     async update(id: string, data: any) {
-        const res = await axios.put(`${API_URL}/${id}`, data, getAuthHeaders());
+        const res = await api.put(`${ENDPOINT}/${id}`, data);
         return res.data;
     },
 
     // Cancelar transacción
     async cancel(id: string, reason: string) {
-        const res = await axios.patch(`${API_URL}/${id}/cancel`, { reason: reason }, getAuthHeaders());
+        const res = await api.patch(`${ENDPOINT}/${id}/cancel`, { reason: reason });
         return res.data;
     }
 };
