@@ -27,7 +27,6 @@ const UserPage = () => {
         second_surname: '',
         email: '',
         username: '',
-        password: '',
         role_id: null,
         active: true 
     };
@@ -221,12 +220,7 @@ const UserPage = () => {
                                 <Dropdown value={user.role_id} options={roles} onChange={(e) => setUser({...user, role_id: e.value})} 
                                     optionLabel="role_name" optionValue="role_id" placeholder="Seleccione un Rol" />
                             </div>
-                        </div>
-
-                        <div className="field">
-                            <label>Contraseña</label>
-                            <Password value={user.password} onChange={(e: any) => setUser({...user, password: e.target.value})} toggleMask feedback={false} />
-                        </div>
+                        </div>               
                        
                         {user.user_id && (
                             <div className="field flex align-items-center mt-4">

@@ -11,7 +11,6 @@ import { Toast } from 'primereact/toast';
 import React, { useEffect, useRef, useState } from 'react';
 import { reconciliationsService } from '@/src/service/reconciliations.service';
 import { Reconciliation } from '@/types';
-import { usePermission } from '@/src/hooks/usePermission';
 import { BankAccountService } from '@/src/service/BankAccountService';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -72,16 +71,6 @@ const ReconciliationsPage = () => {
         { label: 'Diferencias', value: 'DIFFERENCES' }
     ];
     
-    // HOOK DE PERMISOS
-    const { hasPermission, loading: permissionLoading } = usePermission();
-    
-    const canCreate = hasPermission('CREAR_CONCILIACION');
-    const canEdit = hasPermission('EDITAR_CONCILIACION');
-    const canDelete = hasPermission('ELIMINAR_CONCILIACION');
-    const canView = hasPermission('VER_CONCILIACIONES');
-    const canExport = hasPermission('EXPORTAR_CONCILIACIONES');
-    const canExportCSV = hasPermission('EXPORTAR_CSV');
-    
     // Opciones para el dropdown de estado (para el diálogo de edición)
     const statusOptions = [
         { label: 'En Proceso', value: 'IN_PROCESS' },
@@ -92,11 +81,9 @@ const ReconciliationsPage = () => {
     const toast = useRef<Toast>(null);
 
     useEffect(() => {
-        if (canView) {
-            loadReconciliations();
-            loadAccounts();
-        }
-    }, [canView]);
+        loadAccounts();
+        loadReconciliations();
+    }, []);
 
     useEffect(() => {
         applyFilters();
@@ -131,27 +118,18 @@ const ReconciliationsPage = () => {
     const applyFilters = () => {
         let filtered = [...reconciliations];
         
-        // Filtro por Estado
         if (filterStatus) {
             filtered = filtered.filter(item => item.status === filterStatus);
         }
-        
-        // Filtro por Año
         if (filterYear) {
             filtered = filtered.filter(item => item.year === parseInt(filterYear));
         }
-        
-        // Filtro por Mes
         if (filterMonth) {
             filtered = filtered.filter(item => item.month === parseInt(filterMonth));
         }
-        
-        // Filtro por Cuenta
         if (filterAccount) {
             filtered = filtered.filter(item => item.account_id === parseInt(filterAccount));
         }
-        
-        // Filtro por Rango de Fechas (start_date)
         if (filterStartDate) {
             const startDateStr = filterStartDate.toISOString().split('T')[0];
             filtered = filtered.filter(item => item.start_date >= startDateStr);
@@ -173,16 +151,9 @@ const ReconciliationsPage = () => {
         setFilterEndDate(null);
     };
 
-    // ==========================================
-    // EXPORTAR A EXCEL (con datos filtrados)
-    // ==========================================
     const exportToExcel = () => {
         if (!filteredReconciliations || filteredReconciliations.length === 0) {
-            toast.current?.show({ 
-                severity: 'warn', 
-                summary: 'Sin datos', 
-                detail: 'No hay conciliaciones para exportar' 
-            });
+            toast.current?.show({ severity: 'warn', summary: 'Sin datos', detail: 'No hay conciliaciones para exportar' });
             return;
         }
 
@@ -207,35 +178,22 @@ const ReconciliationsPage = () => {
         const fecha = new Date().toISOString().split('T')[0];
         XLSX.writeFile(wb, `conciliaciones_${fecha}.xlsx`);
         
-        toast.current?.show({ 
-            severity: 'success', 
-            summary: 'Exportado', 
-            detail: 'Archivo Excel generado correctamente' 
-        });
+        toast.current?.show({ severity: 'success', summary: 'Exportado', detail: 'Archivo Excel generado correctamente' });
     };
 
-    // ==========================================
-    // EXPORTAR A PDF (con datos filtrados)
-    // ==========================================
     const exportToPDF = () => {
         if (!filteredReconciliations || filteredReconciliations.length === 0) {
-            toast.current?.show({ 
-                severity: 'warn', 
-                summary: 'Sin datos', 
-                detail: 'No hay conciliaciones para exportar a PDF' 
-            });
+            toast.current?.show({ severity: 'warn', summary: 'Sin datos', detail: 'No hay conciliaciones para exportar a PDF' });
             return;
         }
 
         const doc = new jsPDF({ orientation: 'landscape' });
-        
         doc.setFontSize(18);
         doc.text('Reporte de Conciliaciones Bancarias', 14, 22);
         doc.setFontSize(10);
         doc.text(`Generado: ${new Date().toLocaleString()}`, 14, 30);
         doc.text(`Total de conciliaciones: ${filteredReconciliations.length}`, 14, 37);
         
-        // Mostrar filtros aplicados
         let filtersText = 'Filtros: ';
         if (filterStatus) filtersText += `Estado: ${statusFilterOptions.find(o => o.value === filterStatus)?.label} `;
         if (filterYear) filtersText += `Año: ${filterYear} `;
@@ -273,28 +231,16 @@ const ReconciliationsPage = () => {
         const fecha = new Date().toISOString().split('T')[0];
         doc.save(`conciliaciones_${fecha}.pdf`);
         
-        toast.current?.show({ 
-            severity: 'success', 
-            summary: 'Exportado', 
-            detail: 'Archivo PDF generado correctamente' 
-        });
+        toast.current?.show({ severity: 'success', summary: 'Exportado', detail: 'Archivo PDF generado correctamente' });
     };
 
-    // ==========================================
-    // EXPORTAR A CSV (con datos filtrados)
-    // ==========================================
     const exportToCSV = () => {
         if (!filteredReconciliations || filteredReconciliations.length === 0) {
-            toast.current?.show({ 
-                severity: 'warn', 
-                summary: 'Sin datos', 
-                detail: 'No hay conciliaciones para exportar a CSV' 
-            });
+            toast.current?.show({ severity: 'warn', summary: 'Sin datos', detail: 'No hay conciliaciones para exportar a CSV' });
             return;
         }
 
         const headers = ['ID', 'Cuenta ID', 'Año', 'Mes', 'Mes Nombre', 'Fecha Inicio', 'Fecha Fin', 'Estado', 'Saldo Final Banco', 'Saldo Final Libros', 'Diferencia'];
-        
         const rows = filteredReconciliations.map(row => [
             row.reconciliation_id,
             row.account_id,
@@ -309,11 +255,7 @@ const ReconciliationsPage = () => {
             (row.bank_final_balance || 0) - (row.book_final_balance || 0)
         ]);
 
-        const csvContent = [
-            headers.join(','),
-            ...rows.map(row => row.join(','))
-        ].join('\n');
-
+        const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
@@ -324,22 +266,10 @@ const ReconciliationsPage = () => {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
 
-        toast.current?.show({ 
-            severity: 'success', 
-            summary: 'Exportado', 
-            detail: 'Archivo CSV generado correctamente' 
-        });
+        toast.current?.show({ severity: 'success', summary: 'Exportado', detail: 'Archivo CSV generado correctamente' });
     };
 
     const openNew = () => {
-        if (!canCreate) {
-            toast.current?.show({ 
-                severity: 'warn', 
-                summary: 'Acceso Denegado', 
-                detail: 'No tienes permiso para crear conciliaciones' 
-            });
-            return;
-        }
         setSelectedReconciliation({
             account_id: 0,
             month: new Date().getMonth() + 1,
@@ -357,28 +287,12 @@ const ReconciliationsPage = () => {
     };
 
     const openEdit = (reconciliation: Reconciliation) => {
-        if (!canEdit) {
-            toast.current?.show({ 
-                severity: 'warn', 
-                summary: 'Acceso Denegado', 
-                detail: 'No tienes permiso para editar conciliaciones' 
-            });
-            return;
-        }
         setSelectedReconciliation({ ...reconciliation });
         setIsEditing(true);
         setDialogVisible(true);
     };
 
     const openDelete = (reconciliation: Reconciliation) => {
-        if (!canDelete) {
-            toast.current?.show({ 
-                severity: 'warn', 
-                summary: 'Acceso Denegado', 
-                detail: 'No tienes permiso para eliminar conciliaciones' 
-            });
-            return;
-        }
         setSelectedReconciliation(reconciliation);
         setDeleteDialogVisible(true);
     };
@@ -438,82 +352,43 @@ const ReconciliationsPage = () => {
     const actionBodyTemplate = (rowData: Reconciliation) => {
         return (
             <div className="flex gap-2">
-                {canEdit && <Button icon="pi pi-pencil" rounded text severity="info" onClick={() => openEdit(rowData)} tooltip="Editar" />}
-                {canDelete && <Button icon="pi pi-trash" rounded text severity="danger" onClick={() => openDelete(rowData)} tooltip="Eliminar" />}
+                <Button icon="pi pi-pencil" rounded text severity="info" onClick={() => openEdit(rowData)} tooltip="Editar" />
+                <Button icon="pi pi-trash" rounded text severity="danger" onClick={() => openDelete(rowData)} tooltip="Eliminar" />
             </div>
         );
     };
 
-    // Panel de filtros
     const filtersPanel = (
         <div className="grid p-fluid mb-3" style={{ backgroundColor: '#f8f9fa', padding: '1rem', borderRadius: '8px' }}>
             <div className="col-12 md:col-2">
                 <label className="font-bold">Estado</label>
-                <Dropdown 
-                    value={filterStatus} 
-                    options={statusFilterOptions} 
-                    onChange={(e) => setFilterStatus(e.value)} 
-                    placeholder="Todos"
-                    className="w-full"
-                />
+                <Dropdown value={filterStatus} options={statusFilterOptions} onChange={(e) => setFilterStatus(e.value)} placeholder="Todos" className="w-full" />
             </div>
             <div className="col-12 md:col-2">
                 <label className="font-bold">Año</label>
-                <Dropdown 
-                    value={filterYear} 
-                    options={yearOptions()} 
-                    onChange={(e) => setFilterYear(e.value)} 
-                    placeholder="Todos"
-                    className="w-full"
-                />
+                <Dropdown value={filterYear} options={yearOptions()} onChange={(e) => setFilterYear(e.value)} placeholder="Todos" className="w-full" />
             </div>
             <div className="col-12 md:col-2">
                 <label className="font-bold">Mes</label>
-                <Dropdown 
-                    value={filterMonth} 
-                    options={monthOptions} 
-                    onChange={(e) => setFilterMonth(e.value)} 
-                    placeholder="Todos"
-                    className="w-full"
-                />
+                <Dropdown value={filterMonth} options={monthOptions} onChange={(e) => setFilterMonth(e.value)} placeholder="Todos" className="w-full" />
             </div>
             <div className="col-12 md:col-3">
                 <label className="font-bold">Cuenta</label>
                 <Dropdown 
                     value={filterAccount} 
-                    options={[
-                        { label: 'Todas las cuentas', value: '' },
-                        ...accounts.map(acc => ({ 
-                            label: `${acc.account_number} - ${acc.account_alias || 'Sin alias'}`, 
-                            value: acc.account_id.toString() 
-                        }))
-                    ]} 
+                    options={[{ label: 'Todas las cuentas', value: '' }, ...accounts.map(acc => ({ label: `${acc.account_number} - ${acc.account_alias || 'Sin alias'}`, value: acc.account_id.toString() }))]} 
                     onChange={(e) => setFilterAccount(e.value)} 
-                    placeholder="Todas"
-                    className="w-full"
+                    placeholder="Todas" 
+                    className="w-full" 
                 />
             </div>
             <div className="col-12 md:col-3">
                 <label className="font-bold">Fecha Desde</label>
-                <Calendar 
-                    value={filterStartDate} 
-                    onChange={(e) => setFilterStartDate(e.value as Date)} 
-                    dateFormat="yy-mm-dd"
-                    showIcon
-                    placeholder="dd/mm/yyyy"
-                    className="w-full"
-                />
+                <Calendar value={filterStartDate} onChange={(e) => setFilterStartDate(e.value as Date)} dateFormat="yy-mm-dd" showIcon placeholder="dd/mm/yyyy" className="w-full" />
             </div>
             <div className="col-12 md:col-3">
                 <label className="font-bold">Fecha Hasta</label>
-                <Calendar 
-                    value={filterEndDate} 
-                    onChange={(e) => setFilterEndDate(e.value as Date)} 
-                    dateFormat="yy-mm-dd"
-                    showIcon
-                    placeholder="dd/mm/yyyy"
-                    className="w-full"
-                />
+                <Calendar value={filterEndDate} onChange={(e) => setFilterEndDate(e.value as Date)} dateFormat="yy-mm-dd" showIcon placeholder="dd/mm/yyyy" className="w-full" />
             </div>
             <div className="col-12 md:col-2 flex align-items-end">
                 <Button label="Limpiar Filtros" icon="pi pi-filter-slash" severity="secondary" onClick={clearFilters} className="w-full" />
@@ -527,16 +402,10 @@ const ReconciliationsPage = () => {
             <div className="flex flex-wrap align-items-center justify-content-between gap-2">
                 <span className="text-xl text-900 font-bold">Conciliaciones</span>
                 <div className="flex gap-2">
-                    {canCreate && <Button label="Nuevo" icon="pi pi-plus" severity="success" onClick={openNew} />}
-                    {canExport && (
-                        <>
-                            <Button label="Exportar a Excel" icon="pi pi-file-excel" severity="info" onClick={exportToExcel} />
-                            <Button label="Exportar a PDF" icon="pi pi-file-pdf" severity="danger" onClick={exportToPDF} />
-                        </>
-                    )}
-                    {canExportCSV && (
-                        <Button label="Exportar a CSV" icon="pi pi-file" severity="secondary" onClick={exportToCSV} />
-                    )}
+                    <Button label="Nuevo" icon="pi pi-plus" severity="success" onClick={openNew} />
+                    <Button label="Exportar a Excel" icon="pi pi-file-excel" severity="info" onClick={exportToExcel} />
+                    <Button label="Exportar a PDF" icon="pi pi-file-pdf" severity="danger" onClick={exportToPDF} />
+                    <Button label="Exportar a CSV" icon="pi pi-file" severity="secondary" onClick={exportToCSV} />
                     <span className="p-input-icon-left">
                         <i className="pi pi-search" />
                         <InputText value={globalFilter} onChange={(e) => setGlobalFilter(e.target.value)} placeholder="Buscar..." />
@@ -545,20 +414,6 @@ const ReconciliationsPage = () => {
             </div>
         </div>
     );
-
-    if (!canView && !permissionLoading) {
-        return (
-            <div className="grid">
-                <div className="col-12">
-                    <div className="card text-center">
-                        <i className="pi pi-lock" style={{ fontSize: '3rem', color: 'var(--red-500)' }} />
-                        <h3>Acceso Denegado</h3>
-                        <p>No tienes permiso para ver las conciliaciones.</p>
-                    </div>
-                </div>
-            </div>
-        );
-    }
 
     const dialogFooter = (
         <div className="flex justify-content-end gap-2">
@@ -606,7 +461,6 @@ const ReconciliationsPage = () => {
             </div>
 
             <Dialog visible={dialogVisible} style={{ width: '600px' }} header={isEditing ? "Editar Conciliación" : "Nueva Conciliación"} modal className="p-fluid" footer={dialogFooter} onHide={hideDialog}>
-                {/* El contenido del diálogo se mantiene igual */}
                 <div className="field">
                     <label htmlFor="account_id">ID de Cuenta *</label>
                     <InputNumber id="account_id" value={selectedReconciliation.account_id} onChange={(e) => setSelectedReconciliation({ ...selectedReconciliation, account_id: e.value || 0 })} required />

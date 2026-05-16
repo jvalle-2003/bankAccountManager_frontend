@@ -1,15 +1,15 @@
 
 import api from '../utils/endpointApi'; 
 
-const ENDPOINT = '/roles';
+const ENDPOINT = '/currencies';
 
-export const RoleService = {
+export const CurrencyService = {
     async getAll() {
         try {
             const res = await api.get(ENDPOINT);
             return res.data;
         } catch (error) {
-            console.error("Error en RoleService.getAll:", error);
+            console.error("Error en CurrencyService.getAll:", error);
             throw error; 
         }
     },
@@ -19,7 +19,7 @@ export const RoleService = {
             const res = await api.post(ENDPOINT, data);
             return res.data;
         } catch (error) {
-            console.error("Error en RoleService.create:", error);
+            console.error("Error en CurrencyService.create:", error);
             throw error;
         }
     },
@@ -29,7 +29,7 @@ export const RoleService = {
             const res = await api.put(`${ENDPOINT}/${id}`, data);
             return res.data;
         } catch (error) {
-            console.error("Error en RoleService.update:", error);
+            console.error("Error en CurrencyService.update:", error);
             throw error;
         }
     },
@@ -39,7 +39,7 @@ export const RoleService = {
             const res = await api.delete(`${ENDPOINT}/${id}`);
             return res.data;
         } catch (error) {
-            console.error("Error en RoleService.delete:", error);
+            console.error("Error en CurrencyService.delete:", error);
             throw error;
         }
     }

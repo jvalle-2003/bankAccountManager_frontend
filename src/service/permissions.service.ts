@@ -1,60 +1,46 @@
-import axios from 'axios';
-import { Permission } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+import api from '../utils/endpointApi'; 
 
-// Función para obtener headers con token
-const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return {
-        headers: {
-            'Authorization': `Bearer ${token}`
+const ENDPOINT = '/permissions';
+
+export const PermissionsService = {
+    async getAll() {
+        try {
+            const res = await api.get(ENDPOINT);
+            return res.data;
+        } catch (error) {
+            console.error("Error en PermissionsService.getAll:", error);
+            throw error; 
         }
-    };
-};
-
-export const permissionsService = {
-    /**
-     * OBTENER TODOS LOS PERMISOS
-     * GET /api/permissions
-     */
-    async getAll(): Promise<Permission[]> {
-        const response = await axios.get(`${API_URL}/permissions`, getAuthHeaders());
-        return response.data;
     },
 
-    /**
-     * OBTENER UN PERMISO POR ID
-     * GET /api/permissions/:id
-     */
-    async getById(id: number): Promise<Permission> {
-        const response = await axios.get(`${API_URL}/permissions/${id}`, getAuthHeaders());
-        return response.data;
+    async create(data: any) {
+        try {
+            const res = await api.post(ENDPOINT, data);
+            return res.data;
+        } catch (error) {
+            console.error("Error en PermissionsService.create:", error);
+            throw error;
+        }
     },
 
-    /**
-     * CREAR UN NUEVO PERMISO
-     * POST /api/permissions
-     */
-    async create(data: Omit<Permission, 'id_permission'>): Promise<Permission> {
-        const response = await axios.post(`${API_URL}/permissions`, data, getAuthHeaders());
-        return response.data;
+    async update(id: number, data: any) {
+        try {
+            const res = await api.put(`${ENDPOINT}/${id}`, data);
+            return res.data;
+        } catch (error) {
+            console.error("Error en PermissionsService.update:", error);
+            throw error;
+        }
     },
 
-    /**
-     * ACTUALIZAR UN PERMISO
-     * PUT /api/permissions/:id
-     */
-    async update(id: number, data: Partial<Permission>): Promise<Permission> {
-        const response = await axios.put(`${API_URL}/permissions/${id}`, data, getAuthHeaders());
-        return response.data;
-    },
-
-    /**
-     * ELIMINAR UN PERMISO
-     * DELETE /api/permissions/:id
-     */
-    async delete(id: number): Promise<void> {
-        await axios.delete(`${API_URL}/permissions/${id}`, getAuthHeaders());
+    async delete(id: number) {
+        try {
+            const res = await api.delete(`${ENDPOINT}/${id}`);
+            return res.data;
+        } catch (error) {
+            console.error("Error en PermissionsService.delete:", error);
+            throw error;
+        }
     }
 };

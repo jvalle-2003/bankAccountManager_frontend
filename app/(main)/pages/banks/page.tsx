@@ -32,7 +32,8 @@ const BanksPage = () => {
         try {
             const data = await BankAccountService.getBanks();
             setBanks(data);
-        } catch (e) {
+        } catch (e: any) {
+            console.error("Error detallado al cargar bancos:", e.response?.data || e.message || e);
             toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar los bancos' });
         }
     };
@@ -55,7 +56,8 @@ const BanksPage = () => {
             setBankDialog(false);
             setBank(emptyBank);
             loadBanks(); // Recarga la tabla para reflejar cambios
-        } catch (e) {
+        } catch (e: any) {
+            console.error("Error detallado al guardar banco:", e.response?.data || e.message || e);
             toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo guardar el registro' });
         }
     };
@@ -70,7 +72,8 @@ const BanksPage = () => {
             loadBanks(); // IMPORTANTE: Recarga la tabla después de borrar
             
             toast.current?.show({ severity: 'success', summary: 'Eliminado', detail: 'Registro eliminado permanentemente' });
-        } catch (e) {
+        } catch (e: any) {
+            console.error("Error detallado al eliminar banco:", e.response?.data || e.message || e);
             toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al eliminar (Verifique dependencias)' });
         }
     };

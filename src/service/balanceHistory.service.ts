@@ -1,7 +1,8 @@
-import axios from 'axios';
 import { BalanceHistory } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+import api from '../utils/endpointApi'; 
+
+const ENDPOINT = '/balance-history';
 
 // Función para obtener headers con token
 const getAuthHeaders = () => {
@@ -15,26 +16,26 @@ const getAuthHeaders = () => {
 
 export const balanceHistoryService = {
     async getAll(): Promise<BalanceHistory[]> {
-        const response = await axios.get(`${API_URL}/balance-history`, getAuthHeaders());
+        const response = await api.get(`${ENDPOINT}`, getAuthHeaders());
         return response.data;
     },
 
     async getById(id: number): Promise<BalanceHistory> {
-        const response = await axios.get(`${API_URL}/balance-history/${id}`, getAuthHeaders());
+        const response = await api.get(`${ENDPOINT}/${id}`, getAuthHeaders());
         return response.data;
     },
 
     async create(data: Omit<BalanceHistory, 'history_id'>): Promise<BalanceHistory> {
-        const response = await axios.post(`${API_URL}/balance-history`, data, getAuthHeaders());
+        const response = await api.post(`${ENDPOINT}`, data, getAuthHeaders());
         return response.data;
     },
 
     async update(id: number, data: Partial<BalanceHistory>): Promise<BalanceHistory> {
-        const response = await axios.put(`${API_URL}/balance-history/${id}`, data, getAuthHeaders());
+        const response = await api.put(`${ENDPOINT}/${id}`, data, getAuthHeaders());
         return response.data;
     },
 
     async delete(id: number): Promise<void> {
-        await axios.delete(`${API_URL}/balance-history/${id}`, getAuthHeaders());
+        await api.delete(`${ENDPOINT}/${id}`, getAuthHeaders());
     }
 };
