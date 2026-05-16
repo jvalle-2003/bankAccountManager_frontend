@@ -1,22 +1,46 @@
-// service/ocr.service.ts
-import axios from 'axios'; // O usar fetch si prefieres
+import api from './api';
+
+export interface OCRResponse {
+
+    success: boolean;
+
+    transactions: any[];
+
+    bank?: string;
+
+    accountType?: string;
+}
 
 export const OCRService = {
-    async procesarEstadoCuenta(file: File) {
-        const formData = new FormData();
-        formData.append('estado_cuenta', file);
 
-        try {
-            // Ajusta la URL a tu endpoint de Node.js
-            const response = await axios.post('http://localhost:3001/api/ocr/reconciliar-ocr', formData, {
+    async procesarEstadoCuenta(
+        file: File,
+        accountId: number
+    ): Promise<OCRResponse> {
+
+        const formData = new FormData();
+
+        formData.append(
+            'estado_cuenta',
+            file
+        );
+
+        formData.append(
+            'accountId',
+            String(accountId)
+        );
+
+        const response = await api.post(
+            '/ocr/reconciliar-ocr',
+            formData,
+            {
                 headers: {
-                    'Content-Type': 'multipart/form-data'
+                    'Content-Type':
+                        'multipart/form-data'
                 }
-            });
-            return response.data;
-        } catch (error) {
-            console.error("Error en OCRService:", error);
-            throw error;
-        }
+            }
+        );
+
+        return response.data;
     }
 };
