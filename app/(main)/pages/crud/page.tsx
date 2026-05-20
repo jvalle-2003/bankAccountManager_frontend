@@ -7,6 +7,7 @@ import { InputText } from 'primereact/inputtext';
 import { Toast } from 'primereact/toast';
 import { Toolbar } from 'primereact/toolbar';
 import { Dropdown } from 'primereact/dropdown';
+import { InputNumber } from 'primereact/inputnumber';
 import { classNames } from 'primereact/utils';
 import React, { useEffect, useRef, useState } from 'react';
 import { BankAccountService } from '@/src/service/BankAccountService';
@@ -34,26 +35,19 @@ const BankAccountsPage = () => {
     const [deleteDialog, setDeleteDialog] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const toast = useRef<Toast>(null);
-    
-    const [exchangeRates, setExchangeRates] = useState<any>({ 
-        USD_to_GTQ: 0, 
-        GTQ_to_USD: 0,
-        HNL_to_USD: 0,
-        MXN_to_USD: 0,
-        NIO_to_USD: 0 
+
+    const [exchangeRates, setExchangeRates] = useState<any>({
+        USD_to_GTQ: 0,
+        GTQ_to_USD: 0
     });
 
-    useEffect(() => { loadData(); }, []);
+    useEffect(() => {
+        loadData();
+    }, []);
 
     const loadData = async () => {
         try {
-            const [accs, bnks, typs, currs, rates] = await Promise.all([
-                BankAccountService.getAccounts(),
-                BankAccountService.getBanks(),
-                BankAccountService.getAccountTypes(),
-                CurrencyService.getAll(),
-                CurrencyApiService.getLiveRates()
-            ]);
+            const [accs, bnks, typs, currs, rates] = await Promise.all([BankAccountService.getAccounts(), BankAccountService.getBanks(), BankAccountService.getAccountTypes(), CurrencyService.getAll(), CurrencyApiService.getLiveRates()]);
             setAccounts(accs);
             setBanks(bnks);
             setTypes(typs);
@@ -65,87 +59,247 @@ const BankAccountsPage = () => {
     };
 
     // ==========================================
-    // LÓGICA DE TASAS DINÁMICA
+    // FUNCIONES AUXILIARES
     // ==========================================
-    const rateBodyTemplate = (rowData: any) => {
-        // Buscamos la moneda en el arreglo 'currencies' usando el ID que viene de la cuenta
-        const monedaInfo = currencies.find(c => String(c.id_currency) === String(rowData.currency_id));
-        const simbolo = monedaInfo?.symbol || '';
 
-        if (!exchangeRates.USD_to_GTQ) return <span>Cargando...</span>;
-
-        // Validamos por el símbolo que recuperamos dinámicamente de la base de datos
-        switch (simbolo) {
-            case '$': return <span className="text-blue-600 font-bold">Q {exchangeRates.USD_to_GTQ.toFixed(2)}</span>;
-            case 'Q': return <span className="text-green-600 font-bold">$ {exchangeRates.GTQ_to_USD.toFixed(4)}</span>;
-            case 'L': return <span className="text-orange-600 font-bold">$ {exchangeRates.HNL_to_USD.toFixed(4)}</span>;
-            case 'MX$': return <span className="text-red-600 font-bold">$ {exchangeRates.MXN_to_USD.toFixed(4)}</span>;
-            case 'C$': return <span className="text-indigo-600 font-bold">$ {exchangeRates.NIO_to_USD.toFixed(4)}</span>;
-            default: return <span className="text-500">Sin tasa</span>;
-        }
+    // Obtener el símbolo de la moneda seleccionada
+    const getCurrencySymbol = (currencyId: number): string => {
+        const currency = currencies.find((c) => String(c.id_currency) === String(currencyId));
+        return currency?.symbol || '';
     };
 
-    const equivalentBalanceTemplate = (rowData: any) => {
-        const saldo = Number(rowData.current_balance || 0);
-        const monedaInfo = currencies.find(c => String(c.id_currency) === String(rowData.currency_id));
-        const simbolo = monedaInfo?.symbol || '';
+    // Validar si la moneda es Quetzal (GTQ)
+    const isQuetzal = (currencyId: number): boolean => {
+        const symbol = getCurrencySymbol(currencyId);
+        return symbol === 'Q';
+    };
 
-        if (!exchangeRates.USD_to_GTQ || !monedaInfo) return <span>---</span>;
-
-        let conversion = 0;
-        let simboloDestino = '$';
-        let colorClass = 'text-green-600';
-        let locale = 'en-US';
-
-        switch (simbolo) {
-            case '$':
-                conversion = saldo * exchangeRates.USD_to_GTQ;
-                simboloDestino = 'Q';
-                colorClass = 'text-blue-500';
-                locale = 'es-GT';
-                break;
-            case 'Q': conversion = saldo * exchangeRates.GTQ_to_USD; break;
-            case 'L': conversion = saldo * exchangeRates.HNL_to_USD; break;
-            case 'MX$': conversion = saldo * exchangeRates.MXN_to_USD; break;
-            case 'C$': conversion = saldo * exchangeRates.NIO_to_USD; break;
-            default: return <span className="text-500">---</span>;
-        }
-
-        return (
-            <span className={`${colorClass} font-medium`}>
-                {simboloDestino} {conversion.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
-        );
+    // Validar si la moneda es Dólar (USD)
+    const isDollar = (currencyId: number): boolean => {
+        const symbol = getCurrencySymbol(currencyId);
+        return symbol === '$';
     };
 
     // ==========================================
-    // VALIDACIONES DE GUARDADO
+    // VALIDACIONES DE CAMPOS
     // ==========================================
+
+    // Validación: Solo letras, espacios y acentos para el alias
+    const onAccountAliasChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        const regex = /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]*$/;
+        if (regex.test(val) || val === '') {
+            setAccount({ ...account, account_alias: val });
+        } else {
+            toast.current?.show({ severity: 'warn', summary: 'Formato inválido', detail: 'El alias solo puede contener letras y espacios', life: 2000 });
+        }
+    };
+
+    // Validación: Solo números y guiones para el número de cuenta
     const onAccountNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
         const regex = /^[0-9-]*$/;
         if (regex.test(val)) {
             setAccount({ ...account, account_number: val });
         } else {
-            toast.current?.show({ severity: 'warn', summary: 'Error', detail: 'Solo números y guiones', life: 2000 });
+            toast.current?.show({ severity: 'warn', summary: 'Formato inválido', detail: 'Solo números y guiones', life: 2000 });
         }
     };
 
+    // Validación de saldo inicial según el tipo de moneda
+    const onInitialBalanceChange = (e: { value: number | null }) => {
+        const val = e.value || 0;
+        const currencySymbol = getCurrencySymbol(account.currency_id);
+
+        // Definir límites según la moneda
+        const maxBalance = currencySymbol === 'Q' ? 10000000 : 1000000; // Q10M o $1M
+
+        if (val < 0) {
+            toast.current?.show({ severity: 'warn', summary: 'Saldo inválido', detail: 'El saldo inicial no puede ser negativo', life: 2000 });
+            setAccount({ ...account, initial_balance: 0 });
+        } else if (val > maxBalance) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Saldo excedido',
+                detail: `El saldo inicial no puede superar ${currencySymbol}${maxBalance.toLocaleString('es-GT')}`,
+                life: 2000
+            });
+            setAccount({ ...account, initial_balance: maxBalance });
+        } else {
+            setAccount({ ...account, initial_balance: val });
+        }
+    };
+
+    // Validación: Longitud para número de cuenta
+    const validateAccountNumberLength = (number: string): boolean => {
+        const cleanNumber = number.replace(/-/g, '');
+        if (cleanNumber.length < 8) {
+            toast.current?.show({ severity: 'error', summary: 'Número inválido', detail: 'El número de cuenta debe tener al menos 8 dígitos', life: 3000 });
+            return false;
+        }
+        if (cleanNumber.length > 20) {
+            toast.current?.show({ severity: 'error', summary: 'Número inválido', detail: 'El número de cuenta no puede superar los 20 dígitos', life: 3000 });
+            return false;
+        }
+        return true;
+    };
+
+    // Validación: Longitud del alias
+    const validateAliasLength = (alias: string): boolean => {
+        if (alias.length < 3) {
+            toast.current?.show({ severity: 'error', summary: 'Alias muy corto', detail: 'El alias debe tener al menos 3 caracteres', life: 3000 });
+            return false;
+        }
+        if (alias.length > 50) {
+            toast.current?.show({ severity: 'error', summary: 'Alias muy largo', detail: 'El alias no puede superar los 50 caracteres', life: 3000 });
+            return false;
+        }
+        return true;
+    };
+
+    // Validación: Evitar palabras restringidas en alias
+    const validateAliasContent = (alias: string): boolean => {
+        const forbiddenWords = ['admin', 'root', 'test', 'prueba', 'dummy', 'sistema'];
+        const lowerAlias = alias.toLowerCase();
+        for (const word of forbiddenWords) {
+            if (lowerAlias.includes(word)) {
+                toast.current?.show({ severity: 'error', summary: 'Alias no permitido', detail: `El alias no puede contener la palabra "${word}"`, life: 3000 });
+                return false;
+            }
+        }
+        return true;
+    };
+
+    // Validación: Verificar si el número de cuenta ya existe (duplicado)
+    const checkDuplicateAccountNumber = (accountNumber: string, currentAccountId: number | null): boolean => {
+        const isDuplicate = accounts.some((acc) => acc.account_number.trim() === accountNumber.trim() && acc.account_id !== currentAccountId);
+
+        if (isDuplicate) {
+            toast.current?.show({ severity: 'error', summary: 'Cuenta duplicada', detail: 'El número de cuenta ya existe en el sistema', life: 3000 });
+            return true;
+        }
+        return false;
+    };
+
+    // Validación de saldo máximo permitido por tipo de cuenta y moneda
+    const validateBalanceLimit = (balance: number, accountTypeId: number, currencyId: number): boolean => {
+        const currencySymbol = getCurrencySymbol(currencyId);
+        const isQuetzalAccount = currencySymbol === 'Q';
+
+        // Límites en Quetzales
+        const limitsGTQ: { [key: number]: number } = {
+            1: 500000, // Cuenta de ahorro: Q500,000
+            2: 2000000, // Cuenta corriente: Q2,000,000
+            3: 5000000 // Cuenta empresarial: Q5,000,000
+        };
+
+        // Límites en Dólares
+        const limitsUSD: { [key: number]: number } = {
+            1: 50000, // Cuenta de ahorro: $50,000
+            2: 200000, // Cuenta corriente: $200,000
+            3: 500000 // Cuenta empresarial: $500,000
+        };
+
+        const limits = isQuetzalAccount ? limitsGTQ : limitsUSD;
+        const limit = limits[accountTypeId];
+        const currencySymbolDisplay = isQuetzalAccount ? 'Q' : '$';
+
+        if (limit && balance > limit) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Límite excedido',
+                detail: `El saldo no puede exceder ${currencySymbolDisplay}${limit.toLocaleString('es-GT')} para este tipo de cuenta en ${isQuetzalAccount ? 'Quetzales' : 'Dólares'}`,
+                life: 3000
+            });
+            return false;
+        }
+        return true;
+    };
+
+    // Validación: No permitir espacios al inicio o final
+    const sanitizeAndValidateInputs = (): boolean => {
+        const trimmedAlias = account.account_alias?.trim();
+        const trimmedNumber = account.account_number?.trim();
+
+        if (trimmedAlias !== account.account_alias) {
+            toast.current?.show({ severity: 'warn', summary: 'Formato inválido', detail: 'El alias no debe tener espacios al inicio o final', life: 2000 });
+            return false;
+        }
+
+        if (trimmedNumber !== account.account_number) {
+            toast.current?.show({ severity: 'warn', summary: 'Formato inválido', detail: 'El número de cuenta no debe tener espacios al inicio o final', life: 2000 });
+            return false;
+        }
+
+        return true;
+    };
+
+    // Validación de consistencia de moneda al editar
+    const validateCurrencyConsistency = (): boolean => {
+        if (account.account_id && account.currency_id) {
+            const originalAccount = accounts.find((acc) => acc.account_id === account.account_id);
+            if (originalAccount && originalAccount.currency_id !== account.currency_id) {
+                toast.current?.show({
+                    severity: 'error',
+                    summary: 'Moneda no modificable',
+                    detail: 'No se puede cambiar la moneda de una cuenta existente. Las transacciones ya registradas dependen de esta moneda.',
+                    life: 5000
+                });
+                return false;
+            }
+        }
+        return true;
+    };
+
+    // ==========================================
+    // GUARDADO CON TODAS LAS VALIDACIONES
+    // ==========================================
     const saveAccount = async () => {
         setSubmitted(true);
 
+        // Validación de campos obligatorios
         if (!account.account_number || !account.bank_id || !account.account_alias || !account.account_type_id || !account.currency_id) {
             toast.current?.show({ severity: 'warn', summary: 'Atención', detail: 'Complete todos los campos obligatorios' });
             return;
         }
 
-        const isDuplicate = accounts.some(acc => 
-            acc.account_number.trim() === account.account_number.trim() && 
-            acc.account_id !== account.account_id
-        );
+        // Validar que no se cambie la moneda en edición
+        if (!validateCurrencyConsistency()) return;
 
-        if (isDuplicate) {
-            toast.current?.show({ severity: 'error', summary: 'Duplicada', detail: 'El número de cuenta ya existe en el sistema.' });
+        // Validación de espacios al inicio/final
+        if (!sanitizeAndValidateInputs()) return;
+
+        // Validación de alias (solo letras)
+        if (!/^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]+$/.test(account.account_alias)) {
+            toast.current?.show({ severity: 'error', summary: 'Alias inválido', detail: 'El alias solo puede contener letras y espacios' });
+            return;
+        }
+
+        // Validación de longitud de alias
+        if (!validateAliasLength(account.account_alias)) return;
+
+        // Validación de contenido de alias
+        if (!validateAliasContent(account.account_alias)) return;
+
+        // Validación de longitud del número de cuenta
+        if (!validateAccountNumberLength(account.account_number)) return;
+
+        // Validación de duplicado
+        if (checkDuplicateAccountNumber(account.account_number, account.account_id)) return;
+
+        // Validación de saldo máximo (considerando tipo de moneda)
+        if (!validateBalanceLimit(account.initial_balance, account.account_type_id, account.currency_id)) return;
+
+        // Validación de saldo inicial positivo
+        if (account.initial_balance < 0) {
+            toast.current?.show({ severity: 'error', summary: 'Saldo inválido', detail: 'El saldo inicial no puede ser negativo' });
+            return;
+        }
+
+        // Validación de que el saldo inicial no tenga más de 2 decimales
+        const decimalCount = (account.initial_balance.toString().split('.')[1] || '').length;
+        if (decimalCount > 2) {
+            toast.current?.show({ severity: 'error', summary: 'Saldo inválido', detail: 'El saldo no puede tener más de 2 decimales' });
             return;
         }
 
@@ -167,6 +321,17 @@ const BankAccountsPage = () => {
     };
 
     const confirmDelete = async () => {
+        // Validación adicional: No permitir eliminar cuentas con saldo diferente de 0
+        if (account.current_balance !== 0) {
+            const currencySymbol = getCurrencySymbol(account.currency_id);
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'No se puede desactivar',
+                detail: `La cuenta debe tener saldo cero (${currencySymbol}0.00) antes de desactivarse`
+            });
+            return;
+        }
+
         try {
             await BankAccountService.deleteAccount(account.account_id);
             setDeleteDialog(false);
@@ -177,99 +342,261 @@ const BankAccountsPage = () => {
         }
     };
 
+    // ==========================================
+    // RENDERIZADO DE COMPONENTES
+    // ==========================================
+
+    const rateBodyTemplate = (rowData: any) => {
+        const monedaInfo = currencies.find((c) => String(c.id_currency) === String(rowData.currency_id));
+        const simbolo = monedaInfo?.symbol || '';
+
+        if (!exchangeRates.USD_to_GTQ) return <span>Cargando...</span>;
+
+        if (simbolo === 'Q') {
+            return <span className="text-green-600 font-bold">Moneda local (GTQ)</span>;
+        } else if (simbolo === '$') {
+            return <span className="text-blue-600 font-bold">Q {exchangeRates.USD_to_GTQ.toFixed(2)} por USD</span>;
+        } else {
+            return <span className="text-500">Sin tasa disponible</span>;
+        }
+    };
+
+    const equivalentBalanceTemplate = (rowData: any) => {
+        const saldo = Number(rowData.current_balance || 0);
+        const monedaInfo = currencies.find((c) => String(c.id_currency) === String(rowData.currency_id));
+        const simbolo = monedaInfo?.symbol || '';
+
+        if (!exchangeRates.USD_to_GTQ || !monedaInfo) return <span>---</span>;
+
+        let conversion = 0;
+        let colorClass = 'text-green-600';
+
+        if (simbolo === 'Q') {
+            conversion = saldo;
+            colorClass = 'text-green-600';
+        } else if (simbolo === '$') {
+            conversion = saldo * exchangeRates.USD_to_GTQ;
+            colorClass = 'text-blue-600';
+        } else {
+            return <span className="text-500">---</span>;
+        }
+
+        return <span className={`${colorClass} font-medium`}>Q {conversion.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+    };
+
     const currencyBodyTemplate = (rowData: any) => {
-        const moneda = currencies.find(c => String(c.id_currency) === String(rowData.currency_id));
-        return moneda ? moneda.name : rowData.currency_id;
+        const moneda = currencies.find((c) => String(c.id_currency) === String(rowData.currency_id));
+        return moneda ? `${moneda.name} (${moneda.symbol})` : rowData.currency_id;
     };
 
     const actionBody = (rowData: any) => (
         <div className="flex gap-2">
-            <Button icon="pi pi-pencil" rounded severity="success" onClick={() => { setSubmitted(false); setAccount(rowData); setAccountDialog(true); }} />
-            <Button icon="pi pi-trash" rounded severity="danger" onClick={() => { setAccount(rowData); setDeleteDialog(true); }} />
+            <Button
+                icon="pi pi-pencil"
+                rounded
+                severity="success"
+                onClick={() => {
+                    setSubmitted(false);
+                    setAccount(rowData);
+                    setAccountDialog(true);
+                }}
+            />
+            <Button
+                icon="pi pi-trash"
+                rounded
+                severity="danger"
+                onClick={() => {
+                    setAccount(rowData);
+                    setDeleteDialog(true);
+                }}
+            />
         </div>
     );
+
+    // Custom template para mostrar el símbolo de moneda en el placeholder del InputNumber
+    const getCurrencySymbolForBalance = (): string => {
+        const symbol = getCurrencySymbol(account.currency_id);
+        return symbol || 'Q';
+    };
 
     return (
         <div className="card">
             <Toast ref={toast} />
-            <Toolbar className="mb-4" 
+            <Toolbar
+                className="mb-4"
                 left={() => (
-                    <Button label="Nueva Cuenta" icon="pi pi-plus" severity="success" onClick={() => { setSubmitted(false); setAccount(emptyAccount); setAccountDialog(true); }} />
-                )} 
-                right={() => (
-                    <div className="p-2 border-round bg-primary-reverse font-bold text-sm shadow-1 text-primary">
-                        Ref. Hoy: 1 USD = Q {exchangeRates.USD_to_GTQ.toFixed(2)}
-                    </div>
+                    <Button
+                        label="Nueva Cuenta"
+                        icon="pi pi-plus"
+                        severity="success"
+                        onClick={() => {
+                            setSubmitted(false);
+                            setAccount(emptyAccount);
+                            setAccountDialog(true);
+                        }}
+                    />
                 )}
+                right={() => <div className="p-2 border-round bg-primary-reverse font-bold text-sm shadow-1 text-primary">🇬🇹 Tipo de cambio: 1 USD = Q {exchangeRates.USD_to_GTQ?.toFixed(2) || '0.00'}</div>}
             />
 
-            <DataTable value={accounts} paginator rows={10} responsiveLayout="scroll" emptyMessage="No hay cuentas registradas.">
-                <Column field="account_alias" header="Nombre / Alias" sortable />
-                <Column field="account_number" header="No. Cuenta" sortable />
+            <DataTable value={accounts} paginator rows={10} responsiveLayout="scroll" emptyMessage="No hay cuentas registradas." sortField="account_alias" sortOrder={1}>
+                <Column field="account_alias" header="Nombre de la Cuenta" sortable />
+                <Column field="account_number" header="Número de Cuenta" sortable />
                 <Column field="Bank.bank_name" header="Banco" sortable />
-                <Column field="AccountType.type_name" header="Tipo" sortable />
+                <Column field="AccountType.type_name" header="Tipo de Cuenta" sortable />
                 <Column field="currency_id" header="Moneda" body={currencyBodyTemplate} sortable />
-                <Column field="current_balance" header="Saldo Actual" sortable 
-                    body={(rowData) => { 
-                        const moneda = currencies.find(c => String(c.id_currency) === String(rowData.currency_id));
+                <Column
+                    field="current_balance"
+                    header="Saldo Actual"
+                    sortable
+                    body={(rowData) => {
+                        const moneda = currencies.find((c) => String(c.id_currency) === String(rowData.currency_id));
                         const simbolo = moneda ? moneda.symbol : 'Q';
-                        const locale = moneda?.name.includes('Dólar') ? 'en-US' : 'es-GT'; 
+                        const cantidad = Number(rowData.current_balance);
+
                         return (
-                            <span style={{ fontWeight: 'bold' }}>
-                                {simbolo} {Number(rowData.current_balance).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            <span className="font-bold">
+                                {simbolo} {cantidad.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                         );
-                    }} 
+                    }}
                 />
                 <Column header="Tasa de Cambio" body={rateBodyTemplate} />
-                <Column header="Equivalente" body={equivalentBalanceTemplate} />
-                <Column body={actionBody} header="Acciones" />
+                <Column header="Equivalente en Quetzales" body={equivalentBalanceTemplate} />
+                <Column body={actionBody} header="Acciones" style={{ width: '120px' }} />
             </DataTable>
 
-            <Dialog visible={accountDialog} style={{ width: '450px' }} header="Gestión de Cuenta Bancaria" modal className="p-fluid" onHide={() => setAccountDialog(false)}
-                footer={<><Button label="Cancelar" icon="pi pi-times" text onClick={() => setAccountDialog(false)} /><Button label="Guardar" icon="pi pi-check" onClick={saveAccount} /></>}>
-                
+            <Dialog
+                visible={accountDialog}
+                style={{ width: '550px' }}
+                header="Gestión de Cuenta Bancaria"
+                modal
+                className="p-fluid"
+                onHide={() => setAccountDialog(false)}
+                footer={
+                    <>
+                        <Button label="Cancelar" icon="pi pi-times" text onClick={() => setAccountDialog(false)} />
+                        <Button label="Guardar" icon="pi pi-check" onClick={saveAccount} />
+                    </>
+                }
+            >
                 <div className="field">
-                    <label htmlFor="account_alias" className="font-bold">Alias de la Cuenta</label>
-                    <InputText id="account_alias" value={account.account_alias} onChange={(e) => setAccount({...account, account_alias: e.target.value})} className={classNames({ 'p-invalid': submitted && !account.account_alias })} />
-                    {submitted && !account.account_alias && <small className="p-error">Requerido.</small>}
+                    <label htmlFor="account_alias" className="font-bold">
+                        Alias de la Cuenta <span className="text-red-500">*</span>
+                    </label>
+                    <InputText id="account_alias" value={account.account_alias} onChange={onAccountAliasChange} placeholder="Ej: Ahorros Personal" className={classNames({ 'p-invalid': submitted && !account.account_alias })} />
+                    {submitted && !account.account_alias && <small className="p-error">El alias es requerido.</small>}
+                    <small className="text-500">Solo letras y espacios (3-50 caracteres)</small>
                 </div>
 
                 <div className="grid">
                     <div className="col-6">
                         <div className="field">
-                            <label className="font-bold">Moneda</label>
-                            <Dropdown value={account.currency_id} options={currencies} optionLabel="name" optionValue="id_currency" onChange={(e) => setAccount({...account, currency_id: e.value})} className={classNames({ 'p-invalid': submitted && !account.currency_id })} />
+                            <label className="font-bold">
+                                Moneda <span className="text-red-500">*</span>
+                            </label>
+                            <Dropdown
+                                value={account.currency_id}
+                                options={currencies}
+                                optionLabel="name"
+                                optionValue="id_currency"
+                                onChange={(e) => {
+                                    setAccount({ ...account, currency_id: e.value });
+                                    // Resetear el saldo si cambia la moneda
+                                    setAccount((prev: any) => ({ ...prev, initial_balance: 0 }));
+                                }}
+                                placeholder="Seleccione moneda"
+                                className={classNames({ 'p-invalid': submitted && !account.currency_id })}
+                                disabled={account.account_id !== null} // Deshabilitar en edición
+                            />
+                            {submitted && !account.currency_id && <small className="p-error">La moneda es requerida.</small>}
+                            {account.account_id && <small className="text-500">La moneda no se puede modificar después de crear la cuenta</small>}
                         </div>
                     </div>
                     <div className="col-6">
                         <div className="field">
-                            <label className="font-bold">Banco</label>
-                            <Dropdown value={account.bank_id} options={banks} optionLabel="bank_name" optionValue="bank_id" onChange={(e) => setAccount({...account, bank_id: e.value})} className={classNames({ 'p-invalid': submitted && !account.bank_id })} />
+                            <label className="font-bold">
+                                Banco <span className="text-red-500">*</span>
+                            </label>
+                            <Dropdown
+                                value={account.bank_id}
+                                options={banks}
+                                optionLabel="bank_name"
+                                optionValue="bank_id"
+                                onChange={(e) => setAccount({ ...account, bank_id: e.value })}
+                                placeholder="Seleccione banco"
+                                className={classNames({ 'p-invalid': submitted && !account.bank_id })}
+                            />
+                            {submitted && !account.bank_id && <small className="p-error">El banco es requerido.</small>}
                         </div>
                     </div>
                 </div>
 
                 <div className="field">
-                    <label className="font-bold">Tipo de Cuenta</label>
-                    <Dropdown value={account.account_type_id} options={types} optionLabel="type_name" optionValue="account_type_id" onChange={(e) => setAccount({...account, account_type_id: e.value})} className={classNames({ 'p-invalid': submitted && !account.account_type_id })} />
+                    <label className="font-bold">
+                        Tipo de Cuenta <span className="text-red-500">*</span>
+                    </label>
+                    <Dropdown
+                        value={account.account_type_id}
+                        options={types}
+                        optionLabel="type_name"
+                        optionValue="account_type_id"
+                        onChange={(e) => setAccount({ ...account, account_type_id: e.value })}
+                        placeholder="Seleccione tipo"
+                        className={classNames({ 'p-invalid': submitted && !account.account_type_id })}
+                    />
+                    {submitted && !account.account_type_id && <small className="p-error">El tipo de cuenta es requerido.</small>}
                 </div>
 
                 <div className="field">
-                    <label htmlFor="account_number" className="font-bold">Número de Cuenta</label>
-                    <InputText id="account_number" value={account.account_number} onChange={onAccountNumberChange} className={classNames({ 'p-invalid': submitted && !account.account_number })} />
-                    {submitted && !account.account_number && <small className="p-error">Requerido.</small>}
+                    <label htmlFor="account_number" className="font-bold">
+                        Número de Cuenta <span className="text-red-500">*</span>
+                    </label>
+                    <InputText id="account_number" value={account.account_number} onChange={onAccountNumberChange} placeholder="Ej: 1234567890" className={classNames({ 'p-invalid': submitted && !account.account_number })} />
+                    {submitted && !account.account_number && <small className="p-error">El número de cuenta es requerido.</small>}
+                    <small className="text-500">Solo números y guiones (8-20 caracteres)</small>
                 </div>
 
                 <div className="field">
-                    <label htmlFor="initial_balance" className="font-bold">Saldo Inicial</label>
-                    <InputText id="initial_balance" value={account.initial_balance} onChange={(e) => setAccount({...account, initial_balance: e.target.value})} />
+                    <label htmlFor="initial_balance" className="font-bold">
+                        Saldo Inicial ({getCurrencySymbolForBalance()})
+                    </label>
+                    <InputNumber
+                        id="initial_balance"
+                        value={account.initial_balance}
+                        onValueChange={onInitialBalanceChange}
+                        mode="currency"
+                        currency={isQuetzal(account.currency_id) ? 'GTQ' : 'USD'}
+                        locale="es-GT"
+                        min={0}
+                        max={isQuetzal(account.currency_id) ? 10000000 : 1000000}
+                        placeholder={isQuetzal(account.currency_id) ? 'Q 0.00' : '$ 0.00'}
+                        useGrouping={true}
+                        disabled={!account.currency_id}
+                    />
+                    <small className="text-500">{!account.currency_id ? 'Seleccione una moneda primero' : `Valor en ${isQuetzal(account.currency_id) ? 'Quetzales (GTQ)' : 'Dólares (USD)'}, no negativo, máximo 2 decimales`}</small>
                 </div>
             </Dialog>
 
-            <Dialog visible={deleteDialog} header="Confirmar" modal onHide={() => setDeleteDialog(false)}
-                footer={<><Button label="No" icon="pi pi-times" text onClick={() => setDeleteDialog(false)} /><Button label="Sí" icon="pi pi-check" severity="danger" onClick={confirmDelete} /></>}>
-                ¿Desactivar cuenta <b>{account.account_alias}</b>?
+            <Dialog
+                visible={deleteDialog}
+                header="Confirmar Desactivación"
+                modal
+                onHide={() => setDeleteDialog(false)}
+                footer={
+                    <>
+                        <Button label="No" icon="pi pi-times" text onClick={() => setDeleteDialog(false)} />
+                        <Button label="Sí, Desactivar" icon="pi pi-check" severity="danger" onClick={confirmDelete} />
+                    </>
+                }
+            >
+                <div className="text-center">
+                    <i className="pi pi-exclamation-triangle text-3xl text-orange-500 mb-3" />
+                    <p>
+                        ¿Está seguro que desea desactivar la cuenta <b>{account.account_alias}</b>?
+                    </p>
+                    <small className="text-500">La cuenta debe tener saldo cero ({getCurrencySymbol(account.currency_id)}0.00) para ser desactivada.</small>
+                </div>
             </Dialog>
         </div>
     );
