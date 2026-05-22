@@ -39,6 +39,25 @@ interface Transaction {
     cancelled?: boolean;
 }
 
+interface BankAccount {
+    account_id: number;
+    bank_id: number;
+    currency_id: number;
+    account_type_id: number;
+    account_number: string;
+    account_alias: string;
+    initial_balance: number;
+    current_balance: number;
+    active: boolean;
+    created_at: string;
+    Currency?: {
+        id_currency: number;
+        name: string;
+        symbol: string;
+        code: string;
+    };
+}
+
 interface MonthYearFilter {
     month: number;
     year: number;
@@ -63,14 +82,11 @@ interface ValidationErrors {
     account_id?: string;
     transaction_type?: string;
     category_id?: string;
-    currency_id?: string;
     concept?: string;
     amount?: string;
     transaction_date?: string;
     reference_number?: string;
 }
-
-// ─── Constants ────────────────────────────────────────────────────────────────
 
 const EMPTY_TRANSACTION: Transaction = {
     account_id: null,
@@ -109,6 +125,13 @@ const MONTHS = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// ✅ Función para validar que el concepto solo tenga letras, números y espacios
+const validateConceptText = (text: string): boolean => {
+    // Permite letras (mayúsculas y minúsculas), números, espacios, ñ y acentos
+    const regex = /^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]+$/;
+    return regex.test(text);
+};
+
 const formatDateLocale = (value: string | Date): string => {
     if (!value) return 'N/A';
     return new Date(value).toLocaleString('es-GT', {
@@ -136,7 +159,7 @@ const getMonthName = (month: number): string => {
 
 const Transactions = () => {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
-    const [accounts, setAccounts] = useState<any[]>([]);
+    const [accounts, setAccounts] = useState<BankAccount[]>([]);
     const [categories, setCategories] = useState<any[]>([]);
     const [currencies, setCurrencies] = useState<any[]>([]);
     const [monthlyClosings, setMonthlyClosings] = useState<MonthlyClosingData[]>([]);
@@ -169,6 +192,22 @@ const Transactions = () => {
     // ── Lookups ──────────────────────────────────────────────────────────────
 
     const getAccountName = useCallback((id: any): string => accounts.find((a) => a.account_id == id)?.account_alias ?? 'Sin Cuenta', [accounts]);
+
+    const getAccountCurrency = useCallback(
+        (accountId: number | null): number | null => {
+            const account = accounts.find((a) => a.account_id === accountId);
+            return account?.currency_id || null;
+        },
+        [accounts]
+    );
+
+    const getAccountCreatedDate = useCallback(
+        (accountId: number | null): Date | null => {
+            const account = accounts.find((a) => a.account_id === accountId);
+            return account?.created_at ? new Date(account.created_at) : null;
+        },
+        [accounts]
+    );
 
     const getCategoryName = useCallback(
         (id: any): string => {
@@ -246,22 +285,31 @@ const Transactions = () => {
 
     const validateTransaction = (t: Transaction): ValidationErrors => {
         const errs: ValidationErrors = {};
+
+        // Validación de referencia
         if (!t.reference_number || t.reference_number.toString().trim() === '') {
             errs.reference_number = 'El número de referencia es obligatorio.';
         } else if (isNaN(Number(t.reference_number))) {
             errs.reference_number = 'Solo se permiten números.';
         }
-        if (!t.account_id) errs.account_id = 'La cuenta bancaria es obligatoria.';
+
+        // Validación de cuenta
+        if (!t.account_id) {
+            errs.account_id = 'La cuenta bancaria es obligatoria.';
+        }
+
         if (!t.transaction_type) errs.transaction_type = 'El tipo de transacción es obligatorio.';
         if (!t.category_id) errs.category_id = 'La categoría es obligatoria.';
-        if (!t.currency_id) errs.currency_id = 'La moneda es obligatoria.';
 
+        // ✅ Nueva validación para concepto: solo letras, números y espacios
         if (!t.concept || t.concept.trim().length === 0) {
             errs.concept = 'El concepto es obligatorio.';
         } else if (t.concept.trim().length < 3) {
             errs.concept = 'El concepto debe tener al menos 3 caracteres.';
         } else if (t.concept.trim().length > 200) {
             errs.concept = 'El concepto no puede superar los 200 caracteres.';
+        } else if (!validateConceptText(t.concept.trim())) {
+            errs.concept = 'El concepto solo puede contener letras, números y espacios. No se permiten caracteres especiales (como @, #, $, %, &, *, etc.).';
         }
 
         if (t.amount === null || t.amount === undefined || isNaN(t.amount)) {
@@ -272,13 +320,29 @@ const Transactions = () => {
             errs.amount = 'El monto no puede superar Q10,000,000.';
         }
 
+        // Validación de fecha
         if (!t.transaction_date) {
             errs.transaction_date = 'La fecha es obligatoria.';
         } else {
             const txDate = new Date(t.transaction_date);
             txDate.setHours(0, 0, 0, 0);
+
             if (txDate > today()) {
                 errs.transaction_date = 'La fecha no puede ser futura.';
+            }
+
+            // Validar que la fecha no sea anterior a la creación de la cuenta
+            if (t.account_id) {
+                const accountCreatedDate = getAccountCreatedDate(t.account_id);
+                if (accountCreatedDate) {
+                    const accountCreatedDateOnly = new Date(accountCreatedDate);
+                    accountCreatedDateOnly.setHours(0, 0, 0, 0);
+
+                    if (txDate < accountCreatedDateOnly) {
+                        const formattedCreatedDate = accountCreatedDate.toLocaleDateString('es-GT');
+                        errs.transaction_date = `La fecha de la transacción no puede ser anterior a la fecha de creación de la cuenta (${formattedCreatedDate}).`;
+                    }
+                }
             }
         }
 
@@ -303,6 +367,24 @@ const Transactions = () => {
         setTransaction((prev) => ({ ...prev, [field]: value }));
         if (errors[field as keyof ValidationErrors]) {
             setErrors((prev) => ({ ...prev, [field]: undefined }));
+        }
+
+        // ✅ Cuando cambia la cuenta, actualizar automáticamente la moneda
+        if (field === 'account_id') {
+            const accountCurrency = getAccountCurrency(value as number | null);
+            if (accountCurrency) {
+                setTransaction((prev) => ({ ...prev, currency_id: accountCurrency }));
+            }
+        }
+    };
+
+    // ✅ Manejar cambio de concepto con limpieza de caracteres especiales
+    const handleConceptChange = (value: string) => {
+        // Limpiar caracteres especiales automáticamente
+        const cleanedValue = value.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]/g, '');
+        setTransaction((prev) => ({ ...prev, concept: cleanedValue }));
+        if (errors.concept) {
+            setErrors((prev) => ({ ...prev, concept: undefined }));
         }
     };
 
@@ -408,7 +490,6 @@ const Transactions = () => {
                 return;
             }
 
-            // ✅ Usar las transacciones que vienen del statement, NO las del estado global
             const monthTransactions = statement.transactions || [];
 
             console.log('=== TRANSACCIONES DEL STATEMENT ===');
@@ -445,7 +526,6 @@ const Transactions = () => {
         const startDate = new Date(statement.period.start_date).toLocaleDateString('es-GT');
         const endDate = new Date(statement.period.end_date).toLocaleDateString('es-GT');
 
-        // Usar los valores del statement en lugar de recalcular
         const openingBalance = statement.opening_balance || 0;
         const totalCredits = statement.summary?.total_credits || 0;
         const totalDebits = statement.summary?.total_debits || 0;
@@ -465,7 +545,6 @@ const Transactions = () => {
         doc.setFontSize(8);
         doc.text(bankName, 105, 38, { align: 'center' });
 
-        // ── Información de la cuenta ──
         let y = 50;
         doc.setDrawColor(180, 180, 180);
         doc.setLineWidth(0.3);
@@ -480,7 +559,6 @@ const Transactions = () => {
         doc.text(`Tipo: ${accountType}`, 15, y + 21);
         doc.text(`Moneda: ${currencySymbol === 'Q' ? 'QUETZAL GUATEMALTECO' : currencySymbol}`, pageWidth - 15, y + 21, { align: 'right' });
 
-        // ── Período ──
         y += 35;
         doc.setFillColor(220, 230, 241);
         doc.rect(10, y, 190, 10, 'F');
@@ -488,9 +566,6 @@ const Transactions = () => {
         doc.setFontSize(9);
         doc.text(`PERÍODO: ${startDate} al ${endDate}`, 15, y + 7);
 
-        // ══════════════════════════════════════════════
-        // RESUMEN DEL MES
-        // ══════════════════════════════════════════════
         y += 18;
         doc.setFillColor(220, 230, 241);
         doc.rect(10, y, 190, 7, 'F');
@@ -527,9 +602,6 @@ const Transactions = () => {
             }
         });
 
-        // ══════════════════════════════════════════════
-        // DETALLE DE MOVIMIENTOS
-        // ══════════════════════════════════════════════
         const finalY = (doc as any).lastAutoTable.finalY + 15;
         doc.setFillColor(220, 230, 241);
         doc.rect(10, finalY, 190, 7, 'F');
@@ -537,7 +609,6 @@ const Transactions = () => {
         doc.setFontSize(10);
         doc.text('DETALLE DE MOVIMIENTOS', pageWidth / 2, finalY + 5, { align: 'center' });
 
-        // Calcular saldo corrido
         let saldoCorrido = openingBalance;
         const tableRows = monthTransactions.map((t) => {
             const cat = categories.find((c) => c.category_id === t.category_id);
@@ -593,7 +664,6 @@ const Transactions = () => {
             alternateRowStyles: { fillColor: [245, 248, 252] }
         });
 
-        // ── Pie de página ──
         const pageCount = (doc as any).internal.getNumberOfPages();
         for (let i = 1; i <= pageCount; i++) {
             doc.setPage(i);
@@ -606,8 +676,6 @@ const Transactions = () => {
         doc.save(`Estado_Cuenta_${monthName}_${statement.period.year}_${accountAlias.replace(/\s+/g, '_')}.pdf`);
         setReportDialog(false);
     };
-
-    // ── PDF Generation (Comprobante individual) ─────────────────────────────────
 
     const generatePDF = useCallback(
         (data: Transaction) => {
@@ -665,8 +733,6 @@ const Transactions = () => {
         [getAccountName, getCategoryName, getCurrencySymbol]
     );
 
-    // ── Templates ─────────────────────────────────────────────────────────────
-
     const leftToolbarTemplate = () => (
         <div className="flex flex-wrap gap-2">
             <Button label="Nueva Transacción" icon="pi pi-plus" severity="success" onClick={openNew} />
@@ -706,13 +772,10 @@ const Transactions = () => {
 
     const actionBodyTemplate = (rowData: Transaction) => (
         <div className="flex gap-1">
-            <Button icon="pi pi-file-pdf" rounded text severity="info" tooltip="Descargar comprobante" onClick={() => generatePDF(rowData)} />
+            <Button icon="pi pi-file-pdf" rounded text severity="danger" tooltip="Descargar comprobante" onClick={() => generatePDF(rowData)} />
             <Button icon="pi pi-pencil" rounded text severity="success" tooltip="Editar" onClick={() => openEdit(rowData)} disabled={!!rowData.cancelled} />
-            {!rowData.cancelled && <Button icon="pi pi-ban" rounded text severity="danger" tooltip="Anular" onClick={() => confirmCancel(rowData)} />}
         </div>
     );
-
-    const statusBodyTemplate = (rowData: Transaction) => <Tag value={rowData.cancelled ? 'Cancelada' : 'Activa'} severity={rowData.cancelled ? 'danger' : 'success'} />;
 
     const amountBodyTemplate = (rowData: Transaction) => (
         <span className="font-semibold">
@@ -721,8 +784,6 @@ const Transactions = () => {
     );
 
     const fieldError = (key: keyof ValidationErrors) => (errors[key] ? <small className="p-error block mt-1">{errors[key]}</small> : null);
-
-    // ─────────────────────────────────────────────────────────────────────────
 
     return (
         <div className="card">
@@ -748,7 +809,6 @@ const Transactions = () => {
                 <Column field="transaction_date" header="Fecha" sortable body={(row) => formatDateLocale(row.transaction_date)} />
                 <Column field="concept" header="Concepto" />
                 <Column header="Monto" sortable body={amountBodyTemplate} />
-                <Column header="Estado" body={statusBodyTemplate} style={{ width: '9rem' }} />
                 <Column body={actionBodyTemplate} header="Acciones" style={{ width: '11rem' }} />
             </DataTable>
 
@@ -821,23 +881,16 @@ const Transactions = () => {
                     </div>
 
                     <div className="field col-12">
-                        <label className="font-bold block mb-2">Tipo de Moneda *</label>
-                        <Dropdown
-                            value={transaction.currency_id}
-                            options={currencies}
-                            onChange={(e) => handleFieldChange('currency_id', e.value)}
-                            optionLabel="name"
-                            optionValue="id_currency"
-                            placeholder="Seleccione la moneda"
-                            className={`w-full ${errors.currency_id ? 'p-invalid' : ''}`}
-                        />
-                        {fieldError('currency_id')}
-                    </div>
-
-                    <div className="field col-12">
                         <label className="font-bold block mb-2">Concepto *</label>
-                        <InputText value={transaction.concept} onChange={(e) => handleFieldChange('concept', e.target.value)} className={`w-full ${errors.concept ? 'p-invalid' : ''}`} maxLength={200} placeholder="Descripción de la transacción" />
+                        <InputText
+                            value={transaction.concept}
+                            onChange={(e) => handleConceptChange(e.target.value)}
+                            className={`w-full ${errors.concept ? 'p-invalid' : ''}`}
+                            maxLength={200}
+                            placeholder="Solo letras, números y espacios (Ej: Pago de luz marzo 2024)"
+                        />
                         <small className="text-500">{transaction.concept.length}/200 caracteres</small>
+                        <small className="text-500 block mt-1">Solo se permiten letras, números y espacios. Sin caracteres especiales.</small>
                         {fieldError('concept')}
                     </div>
 
@@ -852,9 +905,19 @@ const Transactions = () => {
                             min={0.01}
                             max={10_000_000}
                             className={`w-full ${errors.amount ? 'p-invalid' : ''}`}
-                            placeholder="0.00"
+                            placeholder="0.01"
+                            allowEmpty={false} // ✅ No permite valor vacío
+                            useGrouping={true}
+                            step={0.01}
+                            onKeyDown={(e) => {
+                                // ✅ Evitar que el usuario escriba 0 manualmente
+                                if (e.key === '0' && (transaction.amount === null || transaction.amount <= 0)) {
+                                    e.preventDefault();
+                                }
+                            }}
                         />
                         {fieldError('amount')}
+                        <small className="text-500 block mt-1">El monto debe ser mayor a 0.00</small>
                     </div>
 
                     <div className="field col-6">
@@ -885,6 +948,9 @@ const Transactions = () => {
                             placeholder="Seleccione la fecha"
                         />
                         {fieldError('transaction_date')}
+                        {transaction.account_id && getAccountCreatedDate(transaction.account_id) && (
+                            <small className="text-500 block mt-1">📅 La cuenta fue creada el {getAccountCreatedDate(transaction.account_id)?.toLocaleDateString('es-GT')}</small>
+                        )}
                     </div>
                 </div>
             </Dialog>
