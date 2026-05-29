@@ -269,7 +269,7 @@ const ReconciliationsPage = () => {
                 tx.reference || '',
                 tx.description || '',
                 tx.category_name || 'N/A',
-                tx.movement_type === 'INGRESO' ? 'INGRESO (Crédito)' : tx.movement_type === 'EGRESO' ? 'EGRESO (Débito)' : 'N/A',
+                tx.movement_type === 'INGRESO' ? 'INGRESO' : tx.movement_type === 'EGRESO' ? 'EGRESO' : 'N/A',
                 tx.debit > 0 ? `Q${tx.debit.toFixed(2)}` : '',
                 tx.credit > 0 ? `Q${tx.credit.toFixed(2)}` : '',
                 tx.status === 'PENDING' ? 'Pendiente' : tx.status === 'RECONCILED' ? 'Conciliado' : 'Cancelado'
@@ -531,7 +531,7 @@ const ReconciliationsPage = () => {
                         <div className="field mb-3">
                             <label className="font-bold block mb-1">Tipo de Movimiento</label>
                             <div className={selectedTransaction.movement_type === 'EGRESO' ? 'text-red-600' : 'text-green-600'}>
-                                {selectedTransaction.movement_type === 'EGRESO' ? 'DÉBITO (Egreso)' : selectedTransaction.movement_type === 'INGRESO' ? 'CRÉDITO (Ingreso)' : 'N/A'}
+                                {selectedTransaction.movement_type === 'EGRESO' ? 'DÉBITO' : selectedTransaction.movement_type === 'INGRESO' ? 'CRÉDITO' : 'N/A'}
                             </div>
                         </div>
                         <div className="field mb-3">
