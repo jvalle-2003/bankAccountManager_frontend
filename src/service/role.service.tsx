@@ -1,46 +1,31 @@
-
-import api from '../utils/endpointApi'; 
+// src/service/role.service.ts
+import api from '../utils/endpointApi';
 
 const ENDPOINT = '/roles';
 
 export const RoleService = {
     async getAll() {
-        try {
-            const res = await api.get(ENDPOINT);
-            return res.data;
-        } catch (error) {
-            console.error("Error en RoleService.getAll:", error);
-            throw error; 
-        }
+        const res = await api.get(ENDPOINT);
+        return res.data;
+    },
+
+    async getById(id: number) {
+        const res = await api.get(`${ENDPOINT}/${id}`);
+        return res.data;
     },
 
     async create(data: any) {
-        try {
-            const res = await api.post(ENDPOINT, data);
-            return res.data;
-        } catch (error) {
-            console.error("Error en RoleService.create:", error);
-            throw error;
-        }
+        const res = await api.post(ENDPOINT, data);
+        return res.data;
     },
 
     async update(id: number, data: any) {
-        try {
-            const res = await api.put(`${ENDPOINT}/${id}`, data);
-            return res.data;
-        } catch (error) {
-            console.error("Error en RoleService.update:", error);
-            throw error;
-        }
+        const res = await api.put(`${ENDPOINT}/${id}`, data);
+        return res.data;
     },
 
     async delete(id: number) {
-        try {
-            const res = await api.delete(`${ENDPOINT}/${id}`);
-            return res.data;
-        } catch (error) {
-            console.error("Error en RoleService.delete:", error);
-            throw error;
-        }
+        const res = await api.delete(`${ENDPOINT}/${id}`);
+        return res.data;
     }
 };

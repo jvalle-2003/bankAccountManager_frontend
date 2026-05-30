@@ -14,9 +14,8 @@ export const metadata: Metadata = {
     openGraph: {
         type: 'website',
         title: 'GESBANCA',
-        url: 'https://sakai.primereact.org/',
+        url: '',
         description: 'The ultimate collection of design-agnostic, flexible and accessible React UI Components.',
-        images: ['https://www.primefaces.org/static/social/sakai-react.png'],
         ttl: 604800
     },
     icons: {
@@ -26,9 +25,8 @@ export const metadata: Metadata = {
 
 export default function AppLayout({ children }: AppLayoutProps) {
     return (
-    <AuthGuard>
-        <Layout>
-         {children}
-        </Layout>
-    </AuthGuard>);
+        <AuthGuard>
+            <Layout>{children}</Layout>
+        </AuthGuard>
+    );
 }

@@ -8,6 +8,7 @@ import { Toast } from 'primereact/toast';
 import { Toolbar } from 'primereact/toolbar';
 import { Dropdown } from 'primereact/dropdown';
 import { InputNumber } from 'primereact/inputnumber';
+import { Calendar } from 'primereact/calendar'; // Importar Calendar
 import { classNames } from 'primereact/utils';
 import React, { useEffect, useRef, useState } from 'react';
 import { BankAccountService } from '@/src/service/BankAccountService';
@@ -23,7 +24,8 @@ const BankAccountsPage = () => {
         account_number: '',
         account_alias: '',
         initial_balance: 0,
-        current_balance: 0
+        current_balance: 0,
+        created_at: new Date().toISOString() // Cambiar a formato ISO string
     };
 
     const [accounts, setAccounts] = useState<any[]>([]);
@@ -128,6 +130,23 @@ const BankAccountsPage = () => {
         } else {
             setAccount({ ...account, initial_balance: val });
         }
+    };
+
+    // Validación de fecha: no puede ser futura
+    const validateCreationDate = (date: Date): boolean => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (date > today) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Fecha inválida',
+                detail: 'La fecha de creación no puede ser futura',
+                life: 3000
+            });
+            return false;
+        }
+        return true;
     };
 
     // Validación: Longitud para número de cuenta
@@ -257,11 +276,15 @@ const BankAccountsPage = () => {
     const saveAccount = async () => {
         setSubmitted(true);
 
-        // Validación de campos obligatorios
-        if (!account.account_number || !account.bank_id || !account.account_alias || !account.account_type_id || !account.currency_id) {
+        // Validación de campos obligatorios (incluyendo created_at)
+        if (!account.account_number || !account.bank_id || !account.account_alias || !account.account_type_id || !account.currency_id || !account.created_at) {
             toast.current?.show({ severity: 'warn', summary: 'Atención', detail: 'Complete todos los campos obligatorios' });
             return;
         }
+
+        // Validar fecha de creación
+        const selectedDate = new Date(account.created_at);
+        if (!validateCreationDate(selectedDate)) return;
 
         // Validar que no se cambie la moneda en edición
         if (!validateCurrencyConsistency()) return;
@@ -304,7 +327,14 @@ const BankAccountsPage = () => {
         }
 
         try {
-            const dataToSave = { ...account, current_balance: account.initial_balance };
+            // *** CORRECCIÓN IMPORTANTE: Formatear la fecha correctamente ***
+            const dataToSave = {
+                ...account,
+                current_balance: account.initial_balance,
+                created_at: account.created_at ? new Date(account.created_at).toISOString() : new Date().toISOString()
+                // toISOString() devuelve formato: 2024-01-15T00:00:00.000Z
+            };
+
             if (account.account_id) {
                 await BankAccountService.updateAccount(account.account_id, dataToSave);
                 toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Cuenta Actualizada' });
@@ -315,8 +345,13 @@ const BankAccountsPage = () => {
             setAccountDialog(false);
             setSubmitted(false);
             loadData();
-        } catch (e) {
-            toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al guardar' });
+        } catch (e: any) {
+            console.error('Error al guardar:', e);
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Error',
+                detail: e.response?.data?.message || 'Error al guardar la cuenta'
+            });
         }
     };
 
@@ -387,6 +422,17 @@ const BankAccountsPage = () => {
     const currencyBodyTemplate = (rowData: any) => {
         const moneda = currencies.find((c) => String(c.id_currency) === String(rowData.currency_id));
         return moneda ? `${moneda.name} (${moneda.symbol})` : rowData.currency_id;
+    };
+
+    // Template para mostrar la fecha formateada
+    const dateBodyTemplate = (rowData: any) => {
+        if (!rowData.created_at) return 'N/A';
+        const date = new Date(rowData.created_at);
+        return date.toLocaleDateString('es-GT', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
     };
 
     const actionBody = (rowData: any) => (
@@ -461,6 +507,7 @@ const BankAccountsPage = () => {
                         );
                     }}
                 />
+                <Column field="created_at" header="Fecha Creación" body={dateBodyTemplate} sortable />
                 <Column header="Tasa de Cambio" body={rateBodyTemplate} />
                 <Column header="Equivalente en Quetzales" body={equivalentBalanceTemplate} />
                 <Column body={actionBody} header="Acciones" style={{ width: '120px' }} />
@@ -575,6 +622,34 @@ const BankAccountsPage = () => {
                         disabled={!account.currency_id}
                     />
                     <small className="text-500">{!account.currency_id ? 'Seleccione una moneda primero' : `Valor en ${isQuetzal(account.currency_id) ? 'Quetzales (GTQ)' : 'Dólares (USD)'}, no negativo, máximo 2 decimales`}</small>
+                </div>
+
+                {/* Nuevo campo para fecha de creación */}
+                <div className="field">
+                    <label htmlFor="created_at" className="font-bold">
+                        Fecha de Creación <span className="text-red-500">*</span>
+                    </label>
+                    <Calendar
+                        id="created_at"
+                        value={account.created_at ? new Date(account.created_at) : null}
+                        onChange={(e) => {
+                            // Guardar como ISO string cuando cambie
+                            const selectedDate = e.value;
+                            if (selectedDate) {
+                                setAccount({ ...account, created_at: selectedDate.toISOString() });
+                            } else {
+                                setAccount({ ...account, created_at: null });
+                            }
+                        }}
+                        dateFormat="dd/mm/yy"
+                        showIcon
+                        showButtonBar
+                        placeholder="Seleccione fecha de creación"
+                        className={classNames({ 'p-invalid': submitted && !account.created_at })}
+                        maxDate={new Date()} // No permitir fechas futuras
+                    />
+                    {submitted && !account.created_at && <small className="p-error">La fecha de creación es requerida.</small>}
+                    <small className="text-500">Fecha en que se creó la cuenta bancaria (no puede ser futura)</small>
                 </div>
             </Dialog>
 

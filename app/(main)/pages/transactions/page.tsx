@@ -299,7 +299,7 @@ const Transactions = () => {
         }
 
         if (!t.transaction_type) errs.transaction_type = 'El tipo de transacción es obligatorio.';
-        if (!t.category_id) errs.category_id = 'La categoría es obligatoria.';
+        // if (!t.category_id) errs.category_id = 'La categoría es obligatoria.';
 
         // ✅ Nueva validación para concepto: solo letras, números y espacios
         if (!t.concept || t.concept.trim().length === 0) {

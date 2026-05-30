@@ -14,7 +14,7 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
     const menubuttonRef = useRef(null);
     const topbarmenuRef = useRef(null);
     const topbarmenubuttonRef = useRef(null);
-    
+
     const router = useRouter(); // Inicializamos el router
 
     useImperativeHandle(ref, () => ({
@@ -33,7 +33,7 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
         } finally {
             // Limpiamos los datos locales del usuario
             sessionStorage.removeItem('user');
-            
+
             // Redirigimos a la página de login
             router.push('/auth/login');
         }
@@ -41,11 +41,8 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
 
     return (
         <div className="layout-topbar">
-            <Link href="/" className="layout-topbar-logo">
-                {/* 👇 LOGO ACTUALIZADO A hugo.png */}
-                <img src="/layout/images/hugo.png" width="47.22px" height={'35px'} alt="logo" />
-                <span>GESBANCA</span>
-            </Link>
+            <img src="/layout/images/hugo.png" width="47.22px" height={'35px'} alt="logo" />
+            <span>GESBANCA</span>
 
             <button ref={menubuttonRef} type="button" className="p-link layout-menu-button layout-topbar-button" onClick={onMenuToggle}>
                 <i className="pi pi-bars" />
@@ -64,7 +61,7 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
                     <i className="pi pi-cog"></i>
                     <span>Settings</span>
                 </button>
-                
+
                 {/* Botón de Salir */}
                 <button type="button" className="p-link layout-topbar-button" onClick={handleLogout}>
                     <i className="pi pi-sign-out"></i>

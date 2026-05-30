@@ -28,8 +28,10 @@ const ReconciliationsPage = () => {
 
     const [transactions, setTransactions] = useState<any[]>([]);
     const [filteredTransactions, setFilteredTransactions] = useState<any[]>([]);
+    const [rawTransactions, setRawTransactions] = useState<any[]>([]); // Guardar transacciones sin procesar
 
     const [transactionLoading, setTransactionLoading] = useState(false);
+    const [categoriesLoading, setCategoriesLoading] = useState(true);
 
     const [accounts, setAccounts] = useState<any[]>([]);
     const [categories, setCategories] = useState<any[]>([]);
@@ -55,6 +57,13 @@ const ReconciliationsPage = () => {
         loadInitialData();
     }, []);
 
+    // Procesar transacciones cuando las categorías estén disponibles o cuando cambien las transacciones raw
+    useEffect(() => {
+        if (rawTransactions.length > 0 && categories.length > 0) {
+            processTransactionsWithCategories();
+        }
+    }, [rawTransactions, categories]);
+
     useEffect(() => {
         applyTransactionFilters();
     }, [transactions, transactionAccountFilter, transactionStatusFilter, transactionTypeFilter, transactionDateFrom, transactionDateTo, globalSearch]);
@@ -72,11 +81,78 @@ const ReconciliationsPage = () => {
         }
     }, [transactionDateFrom, transactionDateTo]);
 
+    // Función para procesar transacciones con categorías
+    const processTransactionsWithCategories = () => {
+        const formatted = rawTransactions.map((item: any) => {
+            let status = 'PENDING';
+
+            if (item.reconciled) status = 'RECONCILED';
+            if (item.cancelled) status = 'CANCELLED';
+
+            let debit = 0;
+            let credit = 0;
+
+            const category = categories.find((cat) => String(cat.category_id) === String(item.category_id));
+            const movementType = category?.movement_type || '';
+            const amount = Number(item.amount || 0);
+
+            if (movementType === 'EGRESO') {
+                debit = amount;
+                credit = 0;
+            } else if (movementType === 'INGRESO') {
+                debit = 0;
+                credit = amount;
+            } else {
+                const categoryName = category?.category_name?.toLowerCase() || '';
+                const isEgreso = categoryName.includes('EGRESO') || categoryName.includes('retiro') || categoryName.includes('pago') || categoryName.includes('compra') || categoryName.includes('rechazo');
+                const isIngreso = categoryName.includes('INGRESO') || categoryName.includes('deposito') || categoryName.includes('transferencia credito');
+
+                if (isEgreso) {
+                    debit = amount;
+                    credit = 0;
+                } else if (isIngreso) {
+                    debit = 0;
+                    credit = amount;
+                } else {
+                    if (amount < 0) {
+                        debit = Math.abs(amount);
+                        credit = 0;
+                    } else {
+                        debit = 0;
+                        credit = amount;
+                    }
+                }
+            }
+
+            return {
+                ...item,
+                date: item.transaction_date,
+                reference: item.reference_number,
+                description: item.concept || item.description || '',
+                debit,
+                credit,
+                status,
+                account_id: item.account_id,
+                transaction_type: item.transaction_type,
+                category: category,
+                movement_type: movementType,
+                category_name: category?.category_name || 'Sin categoría'
+            };
+        });
+
+        setTransactions(formatted);
+        setFilteredTransactions(formatted);
+    };
+
     // LOAD DATA
     const loadInitialData = async () => {
         try {
+            // Primero cargar categorías
+            setCategoriesLoading(true);
             await loadCategories();
-            await Promise.all([loadTransactions(), loadAccounts()]);
+
+            // Luego cargar transacciones y cuentas en paralelo
+            await Promise.all([loadRawTransactions(), loadAccounts()]);
         } catch (error) {
             console.error('Error loading initial data:', error);
             toast.current?.show({
@@ -84,6 +160,8 @@ const ReconciliationsPage = () => {
                 summary: 'Error',
                 detail: 'Error al cargar datos iniciales'
             });
+        } finally {
+            setCategoriesLoading(false);
         }
     };
 
@@ -101,82 +179,19 @@ const ReconciliationsPage = () => {
         }
     };
 
-    const loadTransactions = async () => {
+    const loadRawTransactions = async () => {
         setTransactionLoading(true);
 
         try {
             const data = await TransactionService.getAll();
-
-            const formatted = Array.isArray(data)
-                ? data.map((item: any) => {
-                      let status = 'PENDING';
-
-                      if (item.reconciled) status = 'RECONCILED';
-                      if (item.cancelled) status = 'CANCELLED';
-
-                      let debit = 0;
-                      let credit = 0;
-
-                      const category = categories.find((cat) => String(cat.category_id) === String(item.category_id));
-                      const movementType = category?.movement_type || '';
-                      const amount = Number(item.amount || 0);
-
-                      if (movementType === 'EGRESO') {
-                          debit = amount;
-                          credit = 0;
-                      } else if (movementType === 'INGRESO') {
-                          debit = 0;
-                          credit = amount;
-                      } else {
-                          const categoryName = category?.category_name?.toLowerCase() || '';
-                          const isEgreso = categoryName.includes('egreso') || categoryName.includes('retiro') || categoryName.includes('pago') || categoryName.includes('compra') || categoryName.includes('rechazo');
-                          const isIngreso = categoryName.includes('ingreso') || categoryName.includes('deposito') || categoryName.includes('transferencia credito');
-
-                          if (isEgreso) {
-                              debit = amount;
-                              credit = 0;
-                          } else if (isIngreso) {
-                              debit = 0;
-                              credit = amount;
-                          } else {
-                              if (amount < 0) {
-                                  debit = Math.abs(amount);
-                                  credit = 0;
-                              } else {
-                                  debit = 0;
-                                  credit = amount;
-                              }
-                          }
-                      }
-
-                      return {
-                          ...item,
-                          date: item.transaction_date,
-                          reference: item.reference_number,
-                          description: item.concept || item.description || '',
-                          debit,
-                          credit,
-                          status,
-                          account_id: item.account_id,
-                          transaction_type: item.transaction_type,
-                          category: category,
-                          movement_type: movementType,
-                          category_name: category?.category_name || 'Sin categoría'
-                      };
-                  })
-                : [];
-
-            setTransactions(formatted);
-            setFilteredTransactions(formatted);
+            setRawTransactions(Array.isArray(data) ? data : []);
         } catch (error) {
             toast.current?.show({
                 severity: 'error',
                 summary: 'Error',
                 detail: 'No se pudieron cargar las transacciones'
             });
-
-            setTransactions([]);
-            setFilteredTransactions([]);
+            setRawTransactions([]);
         } finally {
             setTransactionLoading(false);
         }
@@ -246,14 +261,13 @@ const ReconciliationsPage = () => {
         setTransactionDateTo(null);
     };
 
-    // TOTALES
-    const getTotals = () => {
+    // TOTALES - Usar useMemo para optimizar
+    const totals = React.useMemo(() => {
         const totalDebit = filteredTransactions.reduce((sum, tx) => sum + tx.debit, 0);
         const totalCredit = filteredTransactions.reduce((sum, tx) => sum + tx.credit, 0);
         const netBalance = totalCredit - totalDebit;
-
         return { totalDebit, totalCredit, netBalance };
-    };
+    }, [filteredTransactions]);
 
     // EXPORTAR PDF
     const exportPDF = () => {
@@ -275,8 +289,6 @@ const ReconciliationsPage = () => {
                 tx.status === 'PENDING' ? 'Pendiente' : tx.status === 'RECONCILED' ? 'Conciliado' : 'Cancelado'
             ]);
         });
-
-        const totals = getTotals();
 
         doc.text('Reporte de Transacciones', 14, 15);
         doc.text(`Generado: ${new Date().toLocaleString()}`, 14, 22);
@@ -315,6 +327,22 @@ const ReconciliationsPage = () => {
             severity: 'success',
             summary: 'Exportado',
             detail: 'Archivo Excel generado correctamente'
+        });
+    };
+
+    // Refrescar datos manualmente
+    const refreshData = async () => {
+        toast.current?.show({
+            severity: 'info',
+            summary: 'Actualizando',
+            detail: 'Cargando datos actualizados...',
+            life: 1500
+        });
+        await loadInitialData();
+        toast.current?.show({
+            severity: 'success',
+            summary: 'Actualizado',
+            detail: 'Datos actualizados correctamente'
         });
     };
 
@@ -357,6 +385,22 @@ const ReconciliationsPage = () => {
         setSelectedTransaction(event.data);
         setDetailsDialog(true);
     };
+
+    // Mostrar skeleton o loading mientras se cargan las categorías
+    if (categoriesLoading && rawTransactions.length === 0) {
+        return (
+            <div className="grid">
+                <div className="col-12">
+                    <div className="card">
+                        <div className="flex justify-content-center align-items-center" style={{ minHeight: '400px' }}>
+                            <i className="pi pi-spin pi-spinner" style={{ fontSize: '2rem' }}></i>
+                            <span className="ml-2">Cargando datos...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     // FILTER PANEL
     const transactionFiltersPanel = (
@@ -462,7 +506,7 @@ const ReconciliationsPage = () => {
                     <div className="flex justify-content-between align-items-center mb-4">
                         <h2>Estado de Conciliaciones Bancarias</h2>
                         <div>
-                            <Button label="Refrescar" icon="pi pi-refresh" className="p-button-secondary p-button-sm" onClick={() => loadInitialData()} loading={transactionLoading} />
+                            <Button label="Refrescar" icon="pi pi-refresh" className="p-button-secondary p-button-sm" onClick={refreshData} loading={transactionLoading || categoriesLoading} />
                             <Button label="Exportar PDF" icon="pi pi-file-pdf" className="p-button-success p-button-sm" onClick={exportPDF} style={{ marginLeft: '10px' }} />
                             <Button label="Exportar Excel" icon="pi pi-file-excel" className="p-button-success p-button-sm" onClick={exportToExcel} style={{ marginLeft: '10px' }} />
                         </div>
@@ -474,19 +518,19 @@ const ReconciliationsPage = () => {
                             <div className="col-12 md:col-4">
                                 <div className="text-center">
                                     <small className="text-500">Total Débitos</small>
-                                    <div className="text-red-600 font-bold text-xl">Q{getTotals().totalDebit.toFixed(2)}</div>
+                                    <div className="text-red-600 font-bold text-xl">Q{totals.totalDebit.toFixed(2)}</div>
                                 </div>
                             </div>
                             <div className="col-12 md:col-4">
                                 <div className="text-center">
                                     <small className="text-500">Total Créditos</small>
-                                    <div className="text-green-600 font-bold text-xl">Q{getTotals().totalCredit.toFixed(2)}</div>
+                                    <div className="text-green-600 font-bold text-xl">Q{totals.totalCredit.toFixed(2)}</div>
                                 </div>
                             </div>
                             <div className="col-12 md:col-4">
                                 <div className="text-center">
                                     <small className="text-500">Balance Neto</small>
-                                    <div className={getTotals().netBalance >= 0 ? 'text-green-600 font-bold text-xl' : 'text-red-600 font-bold text-xl'}>Q{getTotals().netBalance.toFixed(2)}</div>
+                                    <div className={totals.netBalance >= 0 ? 'text-green-600 font-bold text-xl' : 'text-red-600 font-bold text-xl'}>Q{totals.netBalance.toFixed(2)}</div>
                                 </div>
                             </div>
                         </div>
@@ -494,7 +538,16 @@ const ReconciliationsPage = () => {
 
                     {transactionFiltersPanel}
 
-                    <DataTable value={filteredTransactions} loading={transactionLoading} paginator rows={10} rowsPerPageOptions={[10, 25, 50, 100]} emptyMessage="No se encontraron transacciones" onRowClick={onRowClick} rowClassName="cursor-pointer">
+                    <DataTable
+                        value={filteredTransactions}
+                        loading={transactionLoading || categoriesLoading}
+                        paginator
+                        rows={10}
+                        rowsPerPageOptions={[10, 25, 50, 100]}
+                        emptyMessage="No se encontraron transacciones"
+                        onRowClick={onRowClick}
+                        rowClassName="cursor-pointer"
+                    >
                         <Column field="date" header="Fecha" body={(r) => (r.date ? new Date(r.date).toLocaleDateString() : '')} sortable />
                         <Column field="reference" header="Referencia" sortable />
                         <Column field="description" header="Descripción" sortable />

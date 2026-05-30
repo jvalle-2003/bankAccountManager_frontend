@@ -1,45 +1,45 @@
+// rolePermissions.service.ts
 import axios from 'axios';
-import { RolePermission } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
-// Función para obtener headers con token
 const getAuthHeaders = () => {
     const token = localStorage.getItem('token');
     return {
         headers: {
-            'Authorization': `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
         }
     };
 };
 
 export const rolePermissionsService = {
-    // Obtener todas las asignaciones
-    async getAll(): Promise<RolePermission[]> {
+    async getAll() {
         const response = await axios.get(`${API_URL}/role-permissions`, getAuthHeaders());
         return response.data;
     },
 
-    // Obtener asignaciones por rol
-    async getByRole(roleId: number): Promise<RolePermission[]> {
+    async getByRole(roleId: number) {
         const response = await axios.get(`${API_URL}/role-permissions/role/${roleId}`, getAuthHeaders());
         return response.data;
     },
 
-    // Obtener asignaciones por permiso
-    async getByPermission(permissionId: number): Promise<RolePermission[]> {
+    async getByPermission(permissionId: number) {
         const response = await axios.get(`${API_URL}/role-permissions/permission/${permissionId}`, getAuthHeaders());
         return response.data;
     },
 
-    // Asignar permiso a rol
-    async create(data: RolePermission): Promise<RolePermission> {
-        const response = await axios.post(`${API_URL}/role-permissions`, data, getAuthHeaders());
+    async create(data: { role_id: number; permission_id: number; assignment_date: string }) {
+        // Asegurarse de que permission_id sea un número válido (incluyendo 0)
+        const sendData = {
+            ...data,
+            permission_id: Number(data.permission_id)
+        };
+        const response = await axios.post(`${API_URL}/role-permissions`, sendData, getAuthHeaders());
         return response.data;
     },
 
-    // Eliminar asignación
-    async delete(roleId: number, permissionId: number): Promise<void> {
+    async delete(roleId: number, permissionId: number) {
         await axios.delete(`${API_URL}/role-permissions/role/${roleId}/permission/${permissionId}`, getAuthHeaders());
     }
 };
