@@ -125,9 +125,7 @@ const MONTHS = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// ✅ Función para validar que el concepto solo tenga letras, números y espacios
 const validateConceptText = (text: string): boolean => {
-    // Permite letras (mayúsculas y minúsculas), números, espacios, ñ y acentos
     const regex = /^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]+$/;
     return regex.test(text);
 };
